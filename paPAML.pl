@@ -2,6 +2,7 @@
 
 #
 # ==============================================================================
+# [2022-05-09] v1.19: Remove double paramters in ctl file
 # [2022-05-05] v1.18: Change Model -> Test in result
 # [2022-04-11] v1.17: Redesign a bit and remove a small bug
 # [2022-04-01] v1.15: Remove a bug in getCodonInfo
@@ -140,7 +141,7 @@ USAGE
     paPAML.pl -i
     paPAML.pl -c
 
-VERSION 1.18
+VERSION 1.19
 
 WHERE
     runs         - the number of parallel runs
@@ -590,7 +591,7 @@ sub generateCodeml {
 	for my $t ("2", "3") {
 		next if (!($tests =~ m/$t/));
 
-		print OUT ($t == 2 ? "\n# Test 2 - branch site specific" : "\n# Test 3 - branch specific"), "\n\n";
+		print OUT ($t == 2 ? "\n# Test 2 - branch-site specific" : "\n# Test 3 - branch specific"), "\n\n";
 
 		# Get folders for "without or with" fixomega
 		my @dirs0 = <$ctlname-${t}0-*>;
@@ -730,7 +731,7 @@ sub generateSequence {
 
 	print OUT qq(
 # -----------------------------------------------------------------------------
-# Sequence overview of site-specific results
+# Sequence overview of site specific results
 # -----------------------------------------------------------------------------
 
 # Reference
@@ -845,7 +846,8 @@ sub mark {
 #
 sub extendCtl {
 	my ($ctl, $model, $nssites, $fixomega, $omega) = @_;
-	return "model = $model\nNSsites = $nssites\nfix_omega = $fixomega\nomega = $omega\n$ctl";
+	my @a = grep {!($_ =~ m/(\s+|)(model|NSsites|fix_omega|omega)\s*=/)} split(/\n/, $ctl);
+	return "model = $model\nNSsites = $nssites\nfix_omega = $fixomega\nomega = $omega\n" . join("\n", @a);
 }
 
 #
