@@ -120,7 +120,6 @@ my %params = (
 	"icode"        => "0",
 	"method"       => "0",
 	"ndata"        => "1",
-	"omega"        => "0.9",
 	"outfile"      => "mlc",
 	"rho"          => "0",
 	"runmode"      => "0",
