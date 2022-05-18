@@ -2,6 +2,7 @@
 
 #
 # ==============================================================================
+# [2022-05-18] v1.20: Disable termination of subprograms by interrupt
 # [2022-05-09] v1.19: Remove double paramters in ctl file
 # [2022-05-05] v1.18: Change Model -> Test in result
 # [2022-04-11] v1.17: Redesign a bit and remove a small bug
@@ -140,7 +141,7 @@ USAGE
     paPAML.pl -i
     paPAML.pl -c
 
-VERSION 1.19
+VERSION 1.20
 
 WHERE
     runs         - the number of parallel runs
@@ -1041,8 +1042,8 @@ sub loop {
 # ------------------------------------------------------------------------------
 #
 sub main {
-	$SIG{INT}  = \&terminate;
-	$SIG{TERM} = \&terminate;
+	#$SIG{INT}  = \&terminate;
+	#$SIG{TERM} = \&terminate;
 
 	getParams();
 
