@@ -16,8 +16,8 @@ Then download paPAML.pl - and place it somewhere you like.  Additionally it woul
 
 Call paPAML.pl to get help
 
-\# paPAML.pl
-USAGE
+`\# paPAML.pl
+U`SAGE
     paPAML.pl -p runs [-f controlfiles] [-t tests] [-s significance] [-d] {codemlparams}
     paPAML.pl -i
     paPAML.pl -c
@@ -33,7 +33,7 @@ WHERE
                    They can be written like "1" or "12" . The order does
                    not matter.
                    (default: 123h)
-    significance - the maximum p value to print marked trees.  Used for
+    significance - the maximum p value to print marked trees.  Used for`
 
 ## Linux
 
