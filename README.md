@@ -45,7 +45,7 @@ That's it, too!
 
 # Usage
 
-to get a small help about paramters and usage just type the command itself
+to get a small help about parameters and usage just type the command itself
 
     # paPAML.pl
     USAGE
@@ -57,12 +57,6 @@ to get a small help about paramters and usage just type the command itself
 
     WHERE
         runs         - the number of parallel runs
-        controlfiles - a list of control files.  It is assumed they are named
-                       with a suffix "".ctl"!  If not given all files with
-                       that suffix are taken to be calculated
-        tests        - the used tests (1, 2, 3 or h) to run the data against.
-                       They can be written like "1" or "12" . The order does
-                       not matter.
-                       (default: 123h)
-        significance - the maximum p value to print marked trees.  Used for
+        ...
 
+For more details please have a look into the paper :-)
