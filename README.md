@@ -4,7 +4,7 @@ paPAML simplifies, amplifies, and accelerates selection analyses via parallel pr
 
 # Installation
 
-## FreeBSD (version 13.*)
+## FreeBSD (Version 13.*)
 
 The operating system, where paPAML was developed and tested first is/was FreeBSD, so there will be a first description how to install paPAML here.  The installation on FreeBSD is simple.  You don't need any conda environment, all the needed packages are available in the system repositories.  As root (or using sudo) install the packages with
 
@@ -22,9 +22,14 @@ and place it in $HOME/bin - if you want
 
 That's it!
 
-## Linux
+## Linux (Ubuntu 22.04)
 
-In pricipal the installation is on Linux the same.  A docker image description will be filled later.
+In pricipal the installation is the same on Linux.  A docker image description will be filled later.
+
+First install as root following packages
+
+    # apt update
+    # apt install
 
 # Usage
 
