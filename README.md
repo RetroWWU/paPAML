@@ -24,7 +24,7 @@ That's it!
 
 ## Linux (Ubuntu 22.04)
 
-In pricipal the installation is the same on Linux.  A docker image description will be filled later.
+In pricipal the installation is the same on Linux.  A conda image description will be filled later, but on the other hand: why do you need such a lot of overhead?
 
 First install as root following packages
 
