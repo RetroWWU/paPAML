@@ -29,7 +29,7 @@ In pricipal the installation is the same on Linux.  A docker image description w
 First install as root following packages
 
     # apt update
-    # apt install hyphy-common paml libfile-which-perl libproc-processtable-perl libstatistics-distributions-perl
+    # apt install hyphy-common hyphy-pt paml libfile-which-perl libproc-processtable-perl libstatistics-distributions-perl
 
 Now you can (1) download as a "normal" user paPAML.pl direct from the github repository and place it where you like, the best maybe is $HOME/bin.  Additionally it would be good to adjust the PATH environment to the directory where you put paPAML.pl into.  Or you (2) easily do following, what may be even more easy
 
