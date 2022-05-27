@@ -29,7 +29,7 @@ In pricipal the installation is the same on Linux.  A docker image description w
 First install as root following packages
 
     # apt update
-    # apt install
+    # apt install hyphy-common paml 
 
 # Usage
 
