@@ -1,0 +1,27 @@
+[2022-05-30] v1.21: Enable termination of subprocesses on terminte
+
+[2022-05-18] v1.20: Disable termination of subprograms by interrupt
+
+[2022-05-09] v1.19: Remove double paramters in ctl file
+
+[2022-05-05] v1.18: Change Model -> Test in result
+
+[2022-04-11] v1.17: Redesign a bit and remove a small bug
+
+[2022-04-01] v1.15: Remove a bug in getCodonInfo
+
+[2022-03-23] v1.14: Continue revert sequence orientation and values
+
+[2022-03-22] v1.13: Revert sequence orientation and values
+
+[2022-03-17] v1.12: Add 3 lines in sequence output
+
+[2022-02-13] v1.11: Add hyphy calculation
+
+[2022-01-18] v1.10: Allow tree files with ambigous names
+
+[2021-12-14] v1.9: handle codeml errors
+
+[2021-12-13] v1.8: Tree name and tree in result
+
+[2021-12-09] Add additional parameters
