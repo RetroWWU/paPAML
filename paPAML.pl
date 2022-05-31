@@ -2,6 +2,7 @@
 
 #
 # ==============================================================================
+# [2022-05-30] v1.21: Enable termination of subprocesses on terminte
 # [2022-05-18] v1.20: Disable termination of subprograms by interrupt
 # [2022-05-09] v1.19: Remove double paramters in ctl file
 # [2022-05-05] v1.18: Change Model -> Test in result
@@ -26,6 +27,12 @@ use File::Which qw(which);
 use Proc::ProcessTable;
 use Statistics::Distributions;
 
+# The tag/extension for the links of running codeml, hyphy by special name
+my $tag = time;
+my $codemlpgm = "codeml-$tag";
+my $hyphypgm = "hyphy-$tag";
+
+# Parameters
 my $significance = 0.05;
 my $para         = 0;
 my $tests        = "123h";
@@ -141,7 +148,7 @@ USAGE
     paPAML.pl -i
     paPAML.pl -c
 
-VERSION 1.20
+VERSION 1.21
 
 WHERE
     runs         - the number of parallel runs
@@ -281,6 +288,20 @@ sub cleanErrors {
 
 #
 # ------------------------------------------------------------------------
+# Clean program symlinks
+# ------------------------------------------------------------------------
+#
+sub cleanSymlinks {
+	for my $pgm ($codemlpgm, $hyphypgm) {
+		if (-l $pgm) {
+			print "==> Clean symlink $pgm\n";
+			unlink($pgm);
+		}
+	}
+}
+
+#
+# ------------------------------------------------------------------------
 # Get parameters from command line
 # ------------------------------------------------------------------------
 #
@@ -401,7 +422,7 @@ sub getSubpids {
 	my $proc = Proc::ProcessTable->new();
 	foreach my $p (@{$proc->table}) {
 		if ($p->uid == $<) {
-			if ($p->cmndline =~ m/codeml|hyphy/) {
+			if ($p->cmndline =~ m/$codemlpgm|$hyphypgm/) {
 				push(@pids, $p->pid);
 			}
 		}
@@ -431,6 +452,8 @@ sub terminate {
 		print "--> process $pid...\n";
 		kill(9, $pid) if (kill(0, $pid));
 	}
+
+	cleanSymlinks();
 
 	exit(1);
 }
@@ -876,7 +899,7 @@ sub runCodeml {
 	writeFile("codeml.ctl", $ctl);
 	writeFile($treefile,    " 1\n$tree\n");
 
-	writeFile("RUN", "(codeml 2>&1 >codeml.log; if [ \$? -eq 0 ]; then touch DONE; else touch ERROR; fi)&");
+	writeFile("RUN", "(../$codemlpgm 2>&1 >codeml.log; if [ \$? -eq 0 ]; then touch DONE; else touch ERROR; fi)&");
 	system("sh RUN paPAML $subdir");
 
 	chdir("..");
@@ -905,7 +928,7 @@ sub runHyphy {
 	symlink("../$alignfile", $alignfile);
 	symlink("../$treefile",  $treefile);
 
-	my $command = "hyphy fel --pvalue $significance --alignment $alignfile --tree $treefile >out";
+	my $command = "../$hyphypgm fel --pvalue $significance --alignment $alignfile --tree $treefile >out";
 	writeFile("RUN", "($command; if [ \$? -eq 0 ]; then touch DONE; else touch ERROR; fi)&");
 	system("sh RUN paPAML $subdir");
 
@@ -1042,8 +1065,8 @@ sub loop {
 # ------------------------------------------------------------------------------
 #
 sub main {
-	#$SIG{INT}  = \&terminate;
-	#$SIG{TERM} = \&terminate;
+	$SIG{INT}  = \&terminate;
+	$SIG{TERM} = \&terminate;
 
 	getParams();
 
@@ -1082,9 +1105,14 @@ sub main {
 		exit(1);
 	}
 
+	symlink($codeml, $codemlpgm);
+	symlink($hyphy, $hyphypgm);
+
 	cleanErrors(@ctlnames);
 
 	loop();
+
+	cleanSymlinks();
 }
 
 main();
