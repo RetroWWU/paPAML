@@ -2,6 +2,7 @@
 
 #
 # ==============================================================================
+# [2022-06-01] v1.22: Add fasta sequences
 # [2022-05-30] v1.21: Enable termination of subprocesses on terminte
 # [2022-05-18] v1.20: Disable termination of subprograms by interrupt
 # [2022-05-09] v1.19: Remove double paramters in ctl file
@@ -148,7 +149,7 @@ USAGE
     paPAML.pl -i
     paPAML.pl -c
 
-VERSION 1.21
+VERSION 1.22
 
 WHERE
     runs         - the number of parallel runs
@@ -481,7 +482,7 @@ sub printTree {
 
 	my @fs = <$dir/*.ctl>;
 	if (!@fs) {
-		print OUT "[E] No control file in $dir!\n";
+		print RESULT "[E] No control file in $dir!\n";
 		return;
 	}
 
@@ -492,10 +493,10 @@ sub printTree {
 		}
 	}
 
-	printf OUT ("%s\t", "Tree_" . ($treeno + 1));
+	printf RESULT ("%s\t", "Tree_" . ($treeno + 1));
 	my @a = readFile("$dir/$filename");
 	for (my $i = 1 ; $i < @a ; $i++) {
-		print OUT $a[$i], "\n";
+		print RESULT $a[$i], "\n";
 	}
 }
 
@@ -534,7 +535,7 @@ sub generateCodeml {
 
 	my ($bayes12, $bayes78, $codondata) = ({}, {}, {});
 
-	print OUT qq(
+	print RESULT qq(
 # -----------------------------------------------------------------------------
 # Codeml test results
 # -----------------------------------------------------------------------------
@@ -558,7 +559,7 @@ sub generateCodeml {
 
 	# Calculate model 1
 	if ($tests =~ m/1/) {
-		print OUT qq(# Test 1 - site specific\n\n);
+		print RESULT qq(# Test 1 - site specific\n\n);
 
 		my @dirs  = <$ctlname-10-*>;
 		my @lines = readFile("$dirs[0]/mlc");
@@ -581,26 +582,26 @@ sub generateCodeml {
 		my @ms = (1, 2, 7, 8);
 		$index = 0;
 		for my $x (@a) {
-			printf OUT ("%s\t%s\n", "Model_" . $ms[$index++], join("\t", @$x));
+			printf RESULT ("%s\t%s\n", "Model_" . $ms[$index++], join("\t", @$x));
 		}
 
 		my $dltr = abs(2 * ($a[0]->[1] - $a[1]->[1]));
 		my $dn   = abs($a[1]->[0] - $a[0]->[0]);
-		printf OUT ("%s\t%f\t%d\t%f\n", "Test_1_2", $dltr, $dn, Statistics::Distributions::chisqrprob($dn, $dltr));
+		printf RESULT ("%s\t%f\t%d\t%f\n", "Test_1_2", $dltr, $dn, Statistics::Distributions::chisqrprob($dn, $dltr));
 
 		$dltr = abs(2 * ($a[2]->[1] - $a[3]->[1]));
 		$dn   = abs($a[3]->[0] - $a[2]->[0]);
-		printf OUT ("%s\t%f\t%d\t%f\n", "Test_7_8", $dltr, $dn, Statistics::Distributions::chisqrprob($dn, $dltr));
+		printf RESULT ("%s\t%f\t%d\t%f\n", "Test_7_8", $dltr, $dn, Statistics::Distributions::chisqrprob($dn, $dltr));
 
 		$index = 0;
 		for (my $i = 0 ; $i < @lines ; $i++) {
 			if ($lines[$i] =~ m/Bayes Empirical Bayes/) {
 				$i += 6;
-				print OUT ($index == 0 ? "Bayes_2\n" : "Bayes_7\n");
+				print RESULT ($index == 0 ? "Bayes_2\n" : "Bayes_7\n");
 				while ($lines[$i] =~ m/\d+\s+[A-Z\*]\s+/) {
 					my @b = split(/\s+/, $lines[$i++]);
 					if ($b[2] =~ m/\*/) {
-						printf OUT ("%d\t%s\t%s\t%.3f\t%s\t%.3f\n", $b[0], $b[1], $b[2], $b[3], $b[4], $b[5]);
+						printf RESULT ("%d\t%s\t%s\t%.3f\t%s\t%.3f\n", $b[0], $b[1], $b[2], $b[3], $b[4], $b[5]);
 						$b[2] =~ s/\*+$//g;
 						($index == 0 ? $bayes12->{$b[0] - 1} : $bayes78->{$b[0] - 1}) = 1 - $b[2];
 					}
@@ -614,7 +615,7 @@ sub generateCodeml {
 	for my $t ("2", "3") {
 		next if (!($tests =~ m/$t/));
 
-		print OUT ($t == 2 ? "\n# Test 2 - branch-site specific" : "\n# Test 3 - branch specific"), "\n\n";
+		print RESULT ($t == 2 ? "\n# Test 2 - branch-site specific" : "\n# Test 3 - branch specific"), "\n\n";
 
 		# Get folders for "without or with" fixomega
 		my @dirs0 = <$ctlname-${t}0-*>;
@@ -672,21 +673,21 @@ sub generateCodeml {
 			if ($p < $significance) {
 				printTree($dirs0[$treeno], $treeno);
 
-				printf OUT ("%s\t%d\t%s\n", "Tree_" . ($treeno + 1) . "_O", $np0, $lnl0);
+				printf RESULT ("%s\t%d\t%s\n", "Tree_" . ($treeno + 1) . "_O", $np0, $lnl0);
 				if (@b0) {
-					printf OUT ("Bayes_%d_O\n", $treeno + 1);
-					print OUT join("\n", map {sprintf(("%d\t%s\t%s", $_->[0], $_->[1], $_->[2]))} @b0), "\n";
+					printf RESULT ("Bayes_%d_O\n", $treeno + 1);
+					print RESULT join("\n", map {sprintf(("%d\t%s\t%s", $_->[0], $_->[1], $_->[2]))} @b0), "\n";
 					map {$codondata->{$_->[0] - 1}->{"2"} .= sprintf(",Tree_%d:%0.3f", ($treeno + 1), 1 - $_->[2])} @b0;
 				}
 
-				printf OUT ("%s\t%d\t%s\n", "Tree_" . ($treeno + 1) . "_M", $np1, $lnl1);
+				printf RESULT ("%s\t%d\t%s\n", "Tree_" . ($treeno + 1) . "_M", $np1, $lnl1);
 				if (@b1) {
-					printf OUT ("Bayes_%d_M\n", $treeno + 1);
-					print OUT join("\n", map {sprintf(("%d\t%s\t%s", $_->[0], $_->[1], $_->[2]))} @b1), "\n";
+					printf RESULT ("Bayes_%d_M\n", $treeno + 1);
+					print RESULT join("\n", map {sprintf(("%d\t%s\t%s", $_->[0], $_->[1], $_->[2]))} @b1), "\n";
 					map {$codondata->{$_->[0] - 1}->{"2"} .= sprintf(",Tree_%d:%0.3f", ($treeno + 1), 1 - $_->[2])} @b1;
 				}
 
-				printf OUT ("%s\t%f\t%d\t%f\n", "Test_" . ($treeno + 1), $dltr, $dn, $p);
+				printf RESULT ("%s\t%f\t%d\t%f\n", "Test_" . ($treeno + 1), $dltr, $dn, $p);
 			}
 		}
 	}
@@ -702,7 +703,7 @@ sub generateCodeml {
 sub generateHyphy {
 	my ($ctlname, $codondata) = @_;
 
-	print OUT qq(
+	print RESULT qq(
 # -----------------------------------------------------------------------------
 # Test 4 - Hyphy FEL
 # -----------------------------------------------------------------------------
@@ -726,7 +727,7 @@ sub generateHyphy {
 		$a[6] =~ m/p=(\d\.\d+)/;
 		my $value = $1;
 		$codondata->{int($a[1]) - 1}->{$pos ? "h+" : "h-"} = $value;
-		printf OUT ("%d\t%s\t%0.4f\n", $a[1], $pos ? "+" : "-", $value);
+		printf RESULT ("%d\t%s\t%0.4f\n", $a[1], $pos ? "+" : "-", $value);
 	}
 }
 
@@ -752,7 +753,7 @@ sub generateSequence {
 	$seq =~ s/[\-\s]//g;
 	$seq = uc($seq);
 
-	print OUT qq(
+	print RESULT qq(
 # -----------------------------------------------------------------------------
 # Sequence overview of site specific results
 # -----------------------------------------------------------------------------
@@ -769,7 +770,7 @@ sub generateSequence {
 		my $codon = substr($seq, $i * 3, 3);
 		my $cd    = $codondata->{$i};
 		my $trees = substr($cd->{"2"}, 1);
-		printf OUT (
+		printf RESULT (
 			"%d\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n",
 			$i + 1,
 			$codon,
@@ -781,6 +782,28 @@ sub generateSequence {
 			exists $cd->{"h+"}    ? sprintf("%0.4f", $cd->{"h+"})    : "."
 		);
 	}
+
+	open(FASTA, ">", "$ctlname.result.fa");
+	printf FASTA ">T1_Bayes_1_2\n";
+	for (my $i = 0 ; $i < $count ; $i++) {
+		my $codon = substr($seq, $i * 3, 3);
+		printf FASTA ("%s",	exists $bayes12->{$i} ? uc($codon) : lc($codon));
+	}
+	printf FASTA "\n";
+	printf FASTA ">T1_Bayes_7_8\n";
+	for (my $i = 0 ; $i < $count ; $i++) {
+		my $codon = substr($seq, $i * 3, 3);
+		printf FASTA ("%s",	exists $bayes78->{$i} ? uc($codon) : lc($codon));
+	}
+	printf FASTA "\n";
+	printf FASTA ">T1_Bayes_1_2\n";
+	for (my $i = 0 ; $i < $count ; $i++) {
+		my $codon = substr($seq, $i * 3, 3);
+		my $trees = substr($codondata->{$i}->{"2"}, 1);
+		printf FASTA ("%s",	$trees ? uc($codon) : lc($codon));
+	}
+	printf FASTA "\n";
+	close(FASTA);
 }
 
 #
@@ -813,10 +836,10 @@ sub generate {
 
 		print "==> Generate result for $ctlname...\n";
 
-		open(OUT, ">", $resultfile);
+		open(RESULT, ">", $resultfile);
 
 		my ($sec, $min, $hour, $mday, $mon, $year, $wday, $yday, $isdst) = localtime();
-		printf OUT (
+		printf RESULT (
 			"# %04d-%02d-%02d %02d:%02d: Results for %s.ctl with tests %s and significance %f\n",
 			$year + 1900,
 			$mon + 1, $mday, $hour, $min, $ctlname, $tests, $significance
@@ -826,7 +849,7 @@ sub generate {
 		generateHyphy($ctlname, $codondata);
 		generateSequence($ctlname, $bayes12, $bayes78, $codondata);
 
-		close(OUT);
+		close(RESULT);
 
 		if (!$debug) {
 			cleanRuns($ctlname);
