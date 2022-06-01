@@ -6,7 +6,7 @@ paPAML simplifies, amplifies, and accelerates selection analyses via parallel pr
 
 ## FreeBSD (Version 13.*)
 
-The operating system, where paPAML was developed and tested first is/was FreeBSD, so there will be a first description how to install paPAML here.  The installation on FreeBSD is so simple - you don't need any conda environment, all the needed packages are available in the system repositories.  As root (or using sudo) install the packages with
+The operating system, where paPAML was first developed and tested under FreeBSD, so there will be a first description how to install paPAML here.  The installation on FreeBSD is very simple - you don't need any conda environment, all the needed packages are available in the system repositories.  As root (or using sudo) install the packages with
 
     # pkg install wget paml hyphy p5-Proc-ProcessTable p5-Statistics-Distributions p5-File-Which
 
