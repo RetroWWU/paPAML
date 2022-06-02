@@ -6,16 +6,16 @@ paPAML simplifies, amplifies, and accelerates selection analyses via parallel pr
 
 ## FreeBSD (Version 13.*)
 
-The operating system, where paPAML was first developed and tested under FreeBSD, so there will be a first description how to install paPAML here.  The installation on FreeBSD is very simple - you don't need any conda environment, all the needed packages are available in the system repositories.  As root (or using sudo) install the packages with
+The operating system for which paPAML was first developed and tested for was FreeBSD. The installation on this OS is very simple - you don't need any conda environment, all the needed packages are available in the system repositories. As root (or using sudo), install the following packages with the command:
 
     # pkg install wget paml hyphy p5-Proc-ProcessTable p5-Statistics-Distributions p5-File-Which
 
-Now you can (1) download as a "normal" user paPAML.pl direct from the github repository and place it where you like, the best maybe is $HOME/bin.  Additionally it would be good to adjust the PATH environment to the directory where you put paPAML.pl into.  Or you (2) do following, what may be even more easy
+Now you can either (1) download paPAML.pl as a "normal" user directly from this github repository and place it wherever you like (best option might be your home directory $HOME/bin). If possible adjust the PATH environment to the directory where you put paPAML.pl into (though this is optional, it let’s you access paPAML easier). Or (2) use the following, potentially easier step:
 
     # wget https://raw.githubusercontent.com/RetroWWU/paPAML/main/paPAML.pl
     # chmod u+x paPAML.pl
 
-and place it in $HOME/bin - if you want
+and place the extracted directory in your home directory $HOME/bin or another target directory.
 
     # mkdir $HOME/bin
     # mv paPAML.pl $HOME/bin
@@ -24,26 +24,26 @@ That's it!
 
 ## Linux (Ubuntu 22.04)
 
-In pricipal the installation is the same on Linux. First install as root following packages
+In pricipal the installation is the same on Linux. First install the following packages as root (or using sudo):
 
     # apt update
     # apt install hyphy-common hyphy-pt paml libfile-which-perl libproc-processtable-perl libstatistics-distributions-perl
 
-Now you can (1) download as a "normal" user paPAML.pl direct from the github repository and place it where you like, the best maybe is $HOME/bin.  Additionally it would be good to adjust the PATH environment to the directory where you put paPAML.pl into.  Or you (2) do following, what may be even more easy
+Now you can again either (1) download paPAML.pl as a "normal" user directly from this github repository and place it wherever you like (best option might be your home directory $HOME/bin). Additionally it would be good to adjust the PATH environment to the directory where you put paPAML.pl into. Or (2) use the following potentially easier step:
 
     # wget https://raw.githubusercontent.com/RetroWWU/paPAML/main/paPAML.pl
     # chmod u+x paPAML.pl
 
-and place it in $HOME/bin - if you want
+and place the extracted directory in your home directory $HOME/bin or another target directory. 
 
     # mkdir $HOME/bin
     # mv paPAML.pl $HOME/bin
 
-But unfortunately are the binaries (/usr/bin/codeml and /usr/bin/hyphy) in Ubuntu only wrapper scripts with some standard definitions - so to make paPAML correctly you have to adjust the PATH
+Unfortunately binaries in Ubuntu (like /usr/bin/codeml and /usr/bin/hyphy) are only wrapper scripts with some standard definitions, which will cause problems. To circumvent this you have to adjust the PATH of the following directories before starting the program:
 
     # export PATH=/usr/lib/hyphy/bin:/usr/lib/paml/bin:$PATH
 
-You may place it in your shell resource file .bashrc to make it work permanently
+Copy-paste the export command into your shell resource file .bashrc to make it permanent.
 
 That's it, too!
 
