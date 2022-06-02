@@ -39,6 +39,12 @@ and place it in $HOME/bin - if you want
     # mkdir $HOME/bin
     # mv paPAML.pl $HOME/bin
 
+But unfortunately are the binaries (/usr/bin/codeml and /usr/bin/hyphy) in Ubuntu only wrapper scripts with some standard definitions - so to make paPAML correctly you have to adjust the PATH
+
+    # export PATH=/usr/lib/hyphy/bin:/usr/lib/paml/bin:$PATH
+
+You may place it in your shell resource file .bashrc to make it work permanently
+
 That's it, too!
 
 # Usage
