@@ -234,8 +234,9 @@ DESCRIPTION
 
     When all runs finnished succesfully (or if in the meantime all
     needed jobs of a control file are done) there will be a *.result
-    file for every *.ctl file found and the generated subfolders will
-    be removed (calling without the "-d" parameter!).
+    and a *.result.fa file for every *.ctl file found and the
+    generated subfolders will be removed (calling without the "-d"
+    parameter!).
 
     Restarting paPAML.pl again with error runs will first remove the
     folders with ERROR files and rerun those runs again.
@@ -733,7 +734,7 @@ sub generateHyphy {
 
 #
 # ------------------------------------------------------------------------------
-# Prints the final sequnce
+# Prints the final sequence table and the fasta file
 # ------------------------------------------------------------------------------
 #
 sub generateSequence {
@@ -764,12 +765,16 @@ sub generateSequence {
 
 );
 
-	# Loop over codons
+	my ($b12, $b78, $b, $hn, $hp);
 	my $count = length($seq) / 3;
+
+	# Loop over codons
 	for (my $i = 0 ; $i < $count ; $i++) {
 		my $codon = substr($seq, $i * 3, 3);
+		my ($cu, $cl) = (uc($codon), lc($codon));
 		my $cd    = $codondata->{$i};
 		my $trees = substr($cd->{"2"}, 1);
+
 		printf RESULT (
 			"%d\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n",
 			$i + 1,
@@ -781,28 +786,20 @@ sub generateSequence {
 			exists $cd->{"h-"}    ? sprintf("%0.4f", $cd->{"h-"})    : ".",
 			exists $cd->{"h+"}    ? sprintf("%0.4f", $cd->{"h+"})    : "."
 		);
+
+		$b12 .= exists $bayes12->{$i} ? $cu : $cl;
+		$b78 .= exists $bayes78->{$i} ? $cu : $cl;
+		$b .= $trees ? $cu : $cl;
+		$hn .= exists $cd->{"h-"} ? $cu : $cl;
+		$hp .= exists $cd->{"h+"} ? $cu : $cl;
 	}
 
 	open(FASTA, ">", "$ctlname.result.fa");
-	printf FASTA ">T1_Bayes_1_2\n";
-	for (my $i = 0 ; $i < $count ; $i++) {
-		my $codon = substr($seq, $i * 3, 3);
-		printf FASTA ("%s",	exists $bayes12->{$i} ? uc($codon) : lc($codon));
-	}
-	printf FASTA "\n";
-	printf FASTA ">T1_Bayes_7_8\n";
-	for (my $i = 0 ; $i < $count ; $i++) {
-		my $codon = substr($seq, $i * 3, 3);
-		printf FASTA ("%s",	exists $bayes78->{$i} ? uc($codon) : lc($codon));
-	}
-	printf FASTA "\n";
-	printf FASTA ">T1_Bayes_1_2\n";
-	for (my $i = 0 ; $i < $count ; $i++) {
-		my $codon = substr($seq, $i * 3, 3);
-		my $trees = substr($codondata->{$i}->{"2"}, 1);
-		printf FASTA ("%s",	$trees ? uc($codon) : lc($codon));
-	}
-	printf FASTA "\n";
+	print FASTA qq(>T1_Bayes_1_2\n$b12\n);
+	print FASTA qq(>T1_Bayes_7_8\n$b12\n);
+	print FASTA qq(>T1_Bayes\n$b\n);
+	print FASTA qq(>Hyphy_negative\n$hn\n);
+	print FASTA qq(>Hyphy_positive\n$hp\n);
 	close(FASTA);
 }
 
