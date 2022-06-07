@@ -2,6 +2,7 @@
 
 #
 # ==============================================================================
+# [2022-06-07] v1.23: Correct tree with weights
 # [2022-06-01] v1.22: Add fasta sequences
 # [2022-05-30] v1.21: Enable termination of subprocesses on terminte
 # [2022-05-18] v1.20: Disable termination of subprograms by interrupt
@@ -149,7 +150,7 @@ USAGE
     paPAML.pl -i
     paPAML.pl -c
 
-VERSION 1.22
+VERSION 1.23
 
 WHERE
     runs         - the number of parallel runs
@@ -864,18 +865,15 @@ sub generate {
 sub mark {
 	my ($tree) = @_;
 
-	if (!($tree =~ m/#1/)) {
-		$tree =~ s/\(([\w\:\.]+)/\($1 #1/;
+	my $index = index($tree, " #1");
+	if ($index < 0) {
+		$tree =~ s/([\w\:\.]+)/$1 #1/;
 	}
 	else {
 		$tree =~ m/^(.*) #1(.*)$/;
 		my ($head, $tail) = ($1, $2);
 		return "" if (!($tail =~ m/[\w\:\.]/));
-		if (!($tail =~ s/^\)/\) #1/)) {
-			if (!($tail =~ s/,(\(*[\w\:\.]+)/,$1 #1/)) {
-				$tail =~ s/\(([\w\:\.]+,[\w\:\.]+)\)/\($1\) #1/;
-			}
-		}
+		$tail =~ s/([\w\:\.]+|\))(:[\d\.]+)?/$1$2 #1/;
 		$tree = "$head$tail";
 	}
 
