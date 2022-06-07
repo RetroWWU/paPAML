@@ -1,3 +1,11 @@
+**2022-06-07**
+
+Correct tree with weights
+
+**2022-06-01**
+
+Add fasta sequences
+
 **2022-05-30**
 
 Enable termination of subprocesses on terminte
