@@ -797,7 +797,7 @@ sub generateSequence {
 
 	open(FASTA, ">", "$ctlname.result.fa");
 	print FASTA qq(>T1_Bayes_1_2\n$b12\n);
-	print FASTA qq(>T1_Bayes_7_8\n$b12\n);
+	print FASTA qq(>T1_Bayes_7_8\n$b78\n);
 	print FASTA qq(>T1_Bayes\n$b\n);
 	print FASTA qq(>Hyphy_negative\n$hn\n);
 	print FASTA qq(>Hyphy_positive\n$hp\n);
@@ -867,13 +867,13 @@ sub mark {
 
 	my $index = index($tree, " #1");
 	if ($index < 0) {
-		$tree =~ s/([\w\:\.]+)/$1 #1/;
+		$tree =~ s/(\w+|\))([\d\.\:\[\]]+)?/$1$2 #1/;
 	}
 	else {
 		$tree =~ m/^(.*) #1(.*)$/;
 		my ($head, $tail) = ($1, $2);
 		return "" if (!($tail =~ m/[\w\:\.]/));
-		$tail =~ s/([\w\:\.]+|\))(:[\d\.]+)?/$1$2 #1/;
+		$tail =~ s/(\w+|\))([\d\.\:\[\]]+)?/$1$2 #1/;
 		$tree = "$head$tail";
 	}
 
