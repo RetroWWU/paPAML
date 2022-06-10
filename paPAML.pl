@@ -436,7 +436,7 @@ sub getSubpids {
 
 #
 # ------------------------------------------------------------------------
-# Kills all codeml processes
+# Kills all subprocesses
 # ------------------------------------------------------------------------
 #
 sub terminate {
@@ -798,7 +798,7 @@ sub generateSequence {
 	open(FASTA, ">", "$ctlname.result.fa");
 	print FASTA qq(>T1_Bayes_1_2\n$b12\n);
 	print FASTA qq(>T1_Bayes_7_8\n$b78\n);
-	print FASTA qq(>T1_Bayes\n$b\n);
+	print FASTA qq(>T2_Bayes\n$b\n);
 	print FASTA qq(>Hyphy_negative\n$hn\n);
 	print FASTA qq(>Hyphy_positive\n$hp\n);
 	close(FASTA);
@@ -1079,7 +1079,7 @@ sub loop {
 
 #
 # ------------------------------------------------------------------------------
-# Loop over all input files
+# Main
 # ------------------------------------------------------------------------------
 #
 sub main {
