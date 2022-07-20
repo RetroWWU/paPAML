@@ -51,9 +51,9 @@ That's it, too!
 
 The following coding is a quick solution to the conda environment, but it provides a usable conda container environment with name papaml and the main program paPAML.pl which is stored in $HOME/bin folder and executable.
 
-(1) Install the conda / anaconda environment.  (I crosschecked with anaconda and python3.9)
+### (1) Install the conda / anaconda environment.  (I crosschecked with anaconda and python3.9)
 
-(2) Start or restart bash and execute the following comamnds
+### (2) Start or restart bash and execute the following comamnds
 
     conda create -n papaml
     conda activate papaml
@@ -62,18 +62,18 @@ The following coding is a quick solution to the conda environment, but it provid
     conda install -y perl hyphy paml perl-file-which perl-statistics-distributions perl-app-cpanminus gcc
     cpanm install Proc::ProcessTable
 
-(3) Download the paPAML.pl program and put it as executalbe in $HOME/bin
+### (3) Download the paPAML.pl program and put it as executalbe in $HOME/bin
 
     wget https://raw.githubusercontent.com/RetroWWU/paPAML/main/paPAML.pl .
     mkdir $HOME/bin
     mv paPAML.pl $HOME/bin
     chmod u+x $HOME/bin/paPAML.pl
 
-(4) Finally you can adjust the PATH in your $HOME/.bashrc that enables you to call paPAML.pl everywhere without a path
+### (4) Finally you can adjust the PATH in your $HOME/.bashrc that enables you to call paPAML.pl everywhere without a path
 
     echo "export PATH=$HOME/bin:\$PATH" >> $HOME/.bashrc
     
-(5) Maybe: restart the bash - and it is done :-)
+### (5) Maybe: restart the bash - and it is done :-)
 
 # Usage
 
