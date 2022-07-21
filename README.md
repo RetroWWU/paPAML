@@ -59,7 +59,7 @@ The following coding is a quick solution to the conda environment, but it provid
     conda activate papaml
     conda config --add channels conda-forge
     conda config --add channels bioconda
-    conda install -y perl hyphy paml perl-file-which perl-statistics-distributions perl-app-cpanminus gcc
+    conda install -y perl hyphy paml perl-file-which perl-statistics-distributions perl-app-cpanminus gcc make
     cpanm install Proc::ProcessTable
 
 (3) Download the paPAML.pl program and put it as an executalbe in $HOME/bin
