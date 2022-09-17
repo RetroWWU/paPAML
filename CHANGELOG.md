@@ -1,3 +1,7 @@
+**2022-09-17 **
+
+Enhance output format and overall runtime message
+
 **2022-06-07**
 
 Correct tree with weights
