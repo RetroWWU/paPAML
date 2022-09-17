@@ -2,6 +2,7 @@
 
 #
 # ==============================================================================
+# [2022-09-15] v2.0: Extend runtime info
 # [2022-06-07] v1.23: Correct tree with weights
 # [2022-06-01] v1.22: Add fasta sequences
 # [2022-05-30] v1.21: Enable termination of subprocesses on terminte
@@ -24,15 +25,17 @@
 use strict;
 
 use File::Basename;
-use File::Path qw(rmtree);
+use File::Path  qw(rmtree);
 use File::Which qw(which);
 use Proc::ProcessTable;
 use Statistics::Distributions;
 
+my $RUNTIMEFILE = "runtime";
+
 # The tag/extension for the links of running codeml, hyphy by special name
-my $tag = time;
+my $tag       = time;
 my $codemlpgm = "codeml-$tag";
-my $hyphypgm = "hyphy-$tag";
+my $hyphypgm  = "hyphy-$tag";
 
 # Parameters
 my $significance = 0.05;
@@ -43,6 +46,17 @@ my $debug        = 0;
 my ($info, $clean);
 
 my @ctlnames;
+
+# The starttime of this run and the last time check and the interval.
+# The lasttimecheck is put in "future" to have at least some time left
+# for a prognose
+my ($startime, $lasttimecheck, $lasttimeinterval) = (time, time + 1800, 60);
+
+# The actual (total) number of runs
+my $runindex = 0;
+
+# The total runs for a tree / ctl file
+my ($ctlcount, $ctlindex);
 
 # Translate codons in amino acids
 my %aacode = (
@@ -147,10 +161,10 @@ sub usage {
 	print <<EOF;
 USAGE
     paPAML.pl -p runs [-f controlfiles] [-t tests] [-s significance] [-d] {codemlparams}
-    paPAML.pl -i
+    paPAML.pl -i [-f controlfiles]
     paPAML.pl -c
 
-VERSION 1.23
+VERSION 2.0
 
 WHERE
     runs         - the number of parallel runs
@@ -175,10 +189,10 @@ DEFAULT CODEML-PARAMETERS
 $p
 
 DESCRIPTION
-    This program takes specified or all control files (*.ctl) of the
-    actual folder and calls paml/codeml and hyphy (in paralell as
+    This program takes the specified or all control files (*.ctl) of
+    the actual folder and calls paml/codeml and hyphy (in paralell as
     background processes) for them.  There are several tests that are
-    done, either all or selected ones:
+    done:
 
     * test 1:
       Site specific (one run without marker)
@@ -224,27 +238,42 @@ DESCRIPTION
     correspond together, the first for branch site mode and the second
     for the branch model, both without fixomega.
 
+    The log output will have the form
+
+      [T yyyy-mm-dd hh:mm:ss] Same message
+
+    where T is an indicator.  "E" is Error, "I" is additional info and
+    ">" marking a special event.  In the end you will get an info
+    about the total runetime taken like
+
+      [> 2022-09-17 11:12:11] The total runtime was 37.6 minutes
+
+    To establish this the program calculates the runtime it took.  On
+    an interruption the runtime is put in the file called "runtime".
+    On continuation this file is added to the runtime the program
+    took.  This will happen even several times.  If the run finnished
+    successfully this file is removed.
+
     As already mentioned, a finished run in a subfolder will have a
     file called DONE - this is the indicator that the calculation for
     that specific run/tree is done.  On the other hand on an error
     there exists a file called ERROR.
 
     The program stays running, as long as your codeml or hyphy jobs
-    are working.  If you press CTRL-C the program finnishes and all
+    are working.  If you press CTRL-C the program terminates and all
     running codeml and hyphy runs are canceled.
 
     When all runs finnished succesfully (or if in the meantime all
     needed jobs of a control file are done) there will be a *.result
     and a *.result.fa file for every *.ctl file found and the
-    generated subfolders will be removed (calling without the "-d"
-    parameter!).
+    generated subfolders will be removed.  You can skip the deletion
+    of the generated subfolders, when you use the -d (debug)
+    parameter.
 
-    Restarting paPAML.pl again with error runs will first remove the
-    folders with ERROR files and rerun those runs again.
-
-    An interrupted run can/will start from the point (subfolder) where
-    it was stopped (it has no DONE file!) - as long as the
-    intermediate data was not deleted.
+    Restarting paPAML.pl again after a termination or with error runs
+    will first remove the subfolders without a DONE file and rerun
+    those runs again.  Meaning: you can restart as many times as long
+    as not all runs are done.
 
     If a *.result file exists for a *.ctl file, the run(s) will be
     skipped if it is started again.
@@ -258,15 +287,35 @@ if (!@ARGV) {
 
 #
 # ------------------------------------------------------------------------
+# Returns the date as a string
+# ------------------------------------------------------------------------
+#
+sub getDate {
+	my ($sec, $min, $hour, $mday, $mon, $year) = localtime(time);
+	return sprintf("%4d-%02d-%02d %02d:%02d:%02d", $year + 1900, $mon + 1, $mday, $hour, $min, $sec);
+}
+
+#
+# ------------------------------------------------------------------------
+# Prints a message
+# ------------------------------------------------------------------------
+#
+sub message {
+	my ($type, $message) = @_;
+	printf("[%1s %s] %s\n", $type ? $type : "-", getDate(), $message);
+}
+
+#
+# ------------------------------------------------------------------------
 # Clean all generated files for control files not needed any more
 # ------------------------------------------------------------------------
 #
 sub cleanRuns {
 	for my $ctlname (@_) {
-		print "==> Clean $ctlname...\n";
+		message(">", "Clean $ctlname...");
 		my @dirs = grep {-d $_} <$ctlname-*>;
 		for my $dir (@dirs) {
-			print "Clean run $dir...\n";
+			message("", "Clean run $dir...");
 			rmtree($dir);
 		}
 	}
@@ -274,15 +323,15 @@ sub cleanRuns {
 
 #
 # ------------------------------------------------------------------------
-# Clean error runs
+# Clean undone runs
 # ------------------------------------------------------------------------
 #
-sub cleanErrors {
+sub cleanUndones {
 	for my $ctlname (@_) {
 		my @dirs = grep {-d $_} <$ctlname-*>;
 		for my $dir (@dirs) {
-			if (-f "$dir/ERROR") {
-				print "==> Clean error run $dir...\n";
+			if (!-f "$dir/DONE") {
+				message(">", "Clean error run $dir...");
 				rmtree($dir);
 			}
 		}
@@ -297,7 +346,7 @@ sub cleanErrors {
 sub cleanSymlinks {
 	for my $pgm ($codemlpgm, $hyphypgm) {
 		if (-l $pgm) {
-			print "==> Clean symlink $pgm\n";
+			message(">", "Clean symlink $pgm");
 			unlink($pgm);
 		}
 	}
@@ -320,7 +369,7 @@ sub getParams {
 		elsif ($p eq "-p") {
 			$para = $ARGV[$i++ + 1];
 			if (!($para =~ m/^\d+$/)) {
-				print "[E] parameter -p needs an integer value!\n";
+				message("E", "Parameter -p needs an integer value!");
 				exit(1);
 			}
 		}
@@ -333,7 +382,7 @@ sub getParams {
 				push(@errors, $file) if (!-f $file);
 			}
 			if (@errors) {
-				print "[E] control file(s) " . join(",", @errors) . " do not exist!\n";
+				message("E", "Control file(s) " . join(",", @errors) . " do not exist!");
 				exit(1);
 			}
 			@ctlnames = @a;
@@ -346,7 +395,7 @@ sub getParams {
 			$tests .= "3" if ($s =~ m/3/);
 			$tests .= "h" if ($s =~ m/h/);
 			if (!($tests =~ m/^[123h]+$/)) {
-				print "[E] parameter -t needs value(s) of 1, 2, 3 and/or h!\n";
+				message("E", "Parameter -t needs value(s) of 1, 2, 3 and/or h!");
 				exit(1);
 			}
 			if ($tests ne $s) {
@@ -356,7 +405,7 @@ sub getParams {
 		elsif ($p eq "-s") {
 			$significance = $ARGV[$i++ + 1];
 			if (!($significance =~ m/^\d*\.?\d+$/)) {
-				print "[E] parameter -s needs an float value!\n";
+				message("E", "Parameter -s needs a float value!");
 				exit(1);
 			}
 		}
@@ -376,7 +425,7 @@ sub getParams {
 	$count++ if ($info);
 	$count++ if ($para);
 	if ($count != 1) {
-		print "[E] The parameters are incorrect!\n";
+		message("E", "The parameters are incorrect!");
 		exit(1);
 	}
 }
@@ -440,11 +489,14 @@ sub getSubpids {
 # ------------------------------------------------------------------------
 #
 sub terminate {
-	print "==> Terminate...\n";
+	message(">", "Terminate...");
+
+	my $runtime = -f $RUNTIMEFILE ? join("", readFile($RUNTIMEFILE)) : 0;
+	writeFile($RUNTIMEFILE, $runtime + (time - $startime));
 
 	my @pids = getSubpids();
 	for my $pid (@pids) {
-		print "--> process $pid...\n";
+		message("", "process $pid...");
 		kill(15, $pid) if (kill(0, $pid));
 	}
 
@@ -452,7 +504,7 @@ sub terminate {
 
 	@pids = getSubpids();
 	for my $pid (@pids) {
-		print "--> process $pid...\n";
+		message("", "process $pid...");
 		kill(9, $pid) if (kill(0, $pid));
 	}
 
@@ -463,11 +515,33 @@ sub terminate {
 
 #
 # ------------------------------------------------------------------------------
+# Returns the success state
+# ------------------------------------------------------------------------------
+#
+sub getSuccess {
+	return sprintf("%.1f%%", $ctlindex / $ctlcount * 100.0);
+}
+
+#
+# ------------------------------------------------------------------------------
+# Returns the estimated runtime
+# ------------------------------------------------------------------------------
+#
+sub getFinnish {
+	return sprintf("%d minutes", (time - $startime) * $ctlcount / $ctlindex / 60 + 1);
+}
+
+#
+# ------------------------------------------------------------------------------
 # Wait for the next free slot
 # ------------------------------------------------------------------------------
 #
 sub dowait {
 	while (1) {
+		if ($lasttimecheck + $lasttimeinterval < time) {
+			message("I", "Estimated time to finnish all runs: %s\n", getFinnish());
+			$lasttimecheck = time;
+		}
 		my @pids = getSubpids();
 		return if (@pids < $para);
 		sleep(5);
@@ -514,13 +588,13 @@ sub printErrors {
 		my $error = 0;
 		for my $dir (@dirs) {
 			if (-f "$dir/ERROR") {
-				print "[E] There are errors in run $dir!\n";
+				message("E", "There are errors in run $dir!");
 				$error = 1;
 			}
 			my @a = qx(grep "is missing in the tree" $dir/codeml.log) if (-f "$dir/codeml.log");
 			for my $s (@a) {
 				chomp($s);
-				print "[E] Error from codeml run $dir: $s\n";
+				message("E", "Error from codeml run $dir: $s");
 				$error = 1;
 			}
 		}
@@ -790,9 +864,9 @@ sub generateSequence {
 
 		$b12 .= exists $bayes12->{$i} ? $cu : $cl;
 		$b78 .= exists $bayes78->{$i} ? $cu : $cl;
-		$b .= $trees ? $cu : $cl;
-		$hn .= exists $cd->{"h-"} ? $cu : $cl;
-		$hp .= exists $cd->{"h+"} ? $cu : $cl;
+		$b   .= $trees                ? $cu : $cl;
+		$hn  .= exists $cd->{"h-"}    ? $cu : $cl;
+		$hp  .= exists $cd->{"h+"}    ? $cu : $cl;
 	}
 
 	open(FASTA, ">", "$ctlname.result.fa");
@@ -832,7 +906,7 @@ sub generate {
 		map {$count++ if (-f "$_/DONE")} @dirs;
 		next if ($count < @dirs);
 
-		print "==> Generate result for $ctlname...\n";
+		message(">", "Generate result for $ctlname...");
 
 		open(RESULT, ">", $resultfile);
 
@@ -896,19 +970,18 @@ sub extendCtl {
 # Prepare and start a single run
 # ------------------------------------------------------------------------------
 #
-my $runcount = 0;
-
 sub runCodeml {
 	my ($ctlname, $seqfile, $treefile, $ctl, $tree, $treetype, $treeno) = @_;
 
 	my $subdir = sprintf("%s-%02d-%05d", $ctlname, $treetype, $treeno);
 	return if (-f "$subdir/DONE");
 
-	generate() if ((++$runcount % 10) == 0);
+	generate() if ((++$runindex % 10) == 0);
 
 	dowait();
 
-	printf("==> Start %s-%02d-%05d\n", $ctlname, $treetype, $treeno);
+	$ctlindex++;
+	message(">", sprintf("Start %s-%02d-%05d [started or finished %s]", $ctlname, $treetype, $treeno, getSuccess()));
 
 	mkdir($subdir);
 	chdir($subdir);
@@ -934,11 +1007,11 @@ sub runHyphy {
 	my $subdir = "$ctlname-hyphy";
 	return if (-f "$subdir/DONE");
 
-	generate() if ((++$runcount % 10) == 0);
-
+	generate() if ((++$runindex % 10) == 0);
 	dowait();
 
-	printf("==> Start %s\n", $subdir);
+	$ctlindex++;
+	message(">", sprintf("Start %s [started or finished %s]", $subdir, getSuccess()));
 
 	mkdir($subdir);
 	chdir($subdir);
@@ -946,11 +1019,98 @@ sub runHyphy {
 	symlink("../$alignfile", $alignfile);
 	symlink("../$treefile",  $treefile);
 
-	my $command = "../$hyphypgm fel --pvalue $significance --alignment $alignfile --tree $treefile >out";
+	my $command = "../$hyphypgm fel --pvalue $significance --alignment $alignfile --tree $treefile >out 2>/dev/null";
 	writeFile("RUN", "($command; if [ \$? -eq 0 ]; then touch DONE; else touch ERROR; fi)&");
 	system("sh RUN paPAML $subdir");
 
 	chdir("..");
+}
+
+#
+# ------------------------------------------------------------------------------
+# Returns the total number of runs depending on the tree
+# ------------------------------------------------------------------------------
+#
+sub getRuns {
+	my ($tree) = @_;
+
+	my $count = 0;
+
+	my ($n, $t) = (0, $tree);
+	for (my $i = 0 ; $t = mark($t) ; $i++) {
+		$n++;
+	}
+	$count++ if ($tests =~ m/1/);
+	$count += 2 * $n if ($tests =~ m/2/);
+	$count += 2 * $n if ($tests =~ m/3/);
+	$count++ if ($tests =~ m/h/);
+
+	return $count;
+}
+
+#
+# ------------------------------------------------------------------------------
+# Prepare data
+# ------------------------------------------------------------------------------
+#
+sub prepare {
+	my ($ctlname) = @_;
+
+	($ctlcount, $ctlindex) = (0, 0);
+
+	my ($seqfile, $treefile, $tree, $ctl);
+
+	# Read control file and skip some parameters
+	open(F, "<", "$ctlname.ctl");
+	while (my $line = <F>) {
+		$line =~ s/\s*\*.*$//;
+		next if ($line =~ m/^\s*$/);
+
+		my ($key, $value) = split(/=/, $line);
+		$key   =~ s/\s+//g;
+		$value =~ s/^\s+//;
+		$value =~ s/\s+$//;
+
+		next if ($key =~ m/model|NSsites|fix_omega|omega/);
+		next if ($params{$key});
+
+		if ($key eq "seqfile") {
+			$seqfile = $value;
+		}
+		elsif ($key eq "treefile") {
+			$treefile = $value;
+		}
+
+		$ctl .= "$key = $value\n";
+	}
+	close(F);
+
+	for my $key (sort keys %params) {
+		$ctl .= "$key = $params{$key}\n";
+	}
+
+	if (!$seqfile || !-f $seqfile) {
+		messaeg("E", "Missing seqfile $seqfile!");
+		return;
+	}
+	if (!$treefile || !-f $treefile) {
+		message("E", "Missing treefile $treefile!");
+		return;
+	}
+
+	$tree = join("", readFile($treefile));
+	$tree =~ s/\s+//g;
+	return if !($tree);
+
+	$ctlcount = getRuns($tree);
+	$ctlindex = grep {-f "$_/DONE"} <$ctlname-*>;
+
+	if (!$ctlcount) {
+		message("E", "It seems that there are no runs to be done!");
+		return;
+	}
+
+	return ($seqfile, $treefile, $tree, $ctl);
 }
 
 #
@@ -961,77 +1121,35 @@ sub runHyphy {
 sub loop {
 	for my $ctlname (@ctlnames) {
 		my $resultfile = "$ctlname.result";
-		next if (-f $resultfile);
-
-		print "==> Run control file $ctlname...\n";
-
-		my ($seqfile, $treefile);
-
-		# Read control file and skip some parameters
-		my $ctl;
-		open(F, "<", "$ctlname.ctl");
-		while (my $line = <F>) {
-			$line =~ s/\s*\*.*$//;
-			next if ($line =~ m/^\s*$/);
-
-			my ($key, $value) = split(/=/, $line);
-			$key   =~ s/\s+//g;
-			$value =~ s/^\s+//;
-			$value =~ s/\s+$//;
-
-			next if ($key =~ m/model|NSsites|fix_omega|omega/);
-			next if ($params{$key});
-
-			if ($key eq "seqfile") {
-				$seqfile = $value;
-			}
-			elsif ($key eq "treefile") {
-				$treefile = $value;
-			}
-
-			$ctl .= "$key = $value\n";
-		}
-		close(F);
-
-		for my $key (sort keys %params) {
-			$ctl .= "$key = $params{$key}\n";
-		}
-
-		if (!$seqfile || !-f $seqfile) {
-			print "[E] Missing seqfile $seqfile!\n";
-			next;
-		}
-		if (!$treefile || !-f $treefile) {
-			print "[E] Missing treefile $treefile!\n";
+		if (-f $resultfile) {
+			message("I", "The run for $ctlname is already done!");
 			next;
 		}
 
-		# Read the tree
-		open(F, "<", $treefile);
-		my $tree = join("", <F>);
-		close(F);
-		$tree =~ s/\s+//g;
+		message(">", "Take run $ctlname...");
 
-		next if (!$tree);
+		my @a = prepare($ctlname);
+		next if (!@a);
 
+		my ($seqfile, $treefile, $tree, $ctl) = @a;
+
+		message("I", "There are $ctlindex of $ctlcount runs already done...");
+
+		# Site specific
 		if ($tests =~ m/1/) {
-
-			# Site specific
 			my $c = extendCtl($ctl, "0", "1 2 7 8", "0", "1");
 			my $t = $tree;
 			runCodeml($ctlname, $seqfile, $treefile, $c, $t, "10", 0);
 		}
 
+		# Branch site model with and without selection
 		if ($tests =~ m/2/) {
-
-			# Branch site model with selection
 			my $c = extendCtl($ctl, "2", "2", "0", "1");
 			my $t = $tree;
 			for (my $treeno = 0 ; $t = mark($t) ; $treeno++) {
 				runCodeml($ctlname, $seqfile, $treefile, $c, $t, "20", $treeno);
 			}
 
-			# Branch site model without selection
 			$c = extendCtl($ctl, "2", "2", "1", "1");
 			$t = $tree;
 			for (my $treeno = 0 ; $t = mark($t) ; $treeno++) {
@@ -1039,16 +1157,14 @@ sub loop {
 			}
 		}
 
+		# Branch model with and without selection
 		if ($tests =~ m/3/) {
-
-			# Branch model with selection
 			my $c = extendCtl($ctl, "2", "0", "0", "1");
 			my $t = $tree;
 			for (my $treeno = 0 ; $t = mark($t) ; $treeno++) {
 				runCodeml($ctlname, $seqfile, $treefile, $c, $t, "30", $treeno);
 			}
 
-			# Branch model without selection
 			$c = extendCtl($ctl, "2", "0", "1", "1");
 			$t = $tree;
 			for (my $treeno = 0 ; $t = mark($t) ; $treeno++) {
@@ -1056,14 +1172,13 @@ sub loop {
 			}
 		}
 
+		# Calculate hyphy results
 		if ($tests =~ m/h/) {
-
-			# Calculate hyphy results
 			runHyphy($ctlname, $seqfile, $treefile);
 		}
 	}
 
-	print "==> Waiting to finish remaining runs...\n";
+	message(">", "Waiting to finish remaining runs...");
 	while (1) {
 		my @pids = getSubpids();
 		last if (!@pids);
@@ -1074,7 +1189,7 @@ sub loop {
 
 	printErrors();
 
-	print "==> Finished!\n";
+	message(">", "Finished!");
 }
 
 #
@@ -1091,12 +1206,30 @@ sub main {
 	@ctlnames = map {$_ =~ s/\.ctl$//; $_} <*.ctl> if (!@ctlnames);
 
 	if ($info) {
-		print "==> Running paPAML processes (pid: tree)\n";
-		my $proc = Proc::ProcessTable->new();
-		foreach my $p (@{$proc->table}) {
-			if ($p->uid == $< && $p->cmndline =~ m/sh RUN paPAML/) {
-				my @a = split(/\s+/, $p->cmndline);
-				printf("%d: %s\n", $p->pid, $a[3]);
+
+		#print "==> Running paPAML processes (pid: treefolder)\n";
+		#my $proc = Proc::ProcessTable->new();
+		#foreach my $p (@{$proc->table}) {
+		#	if ($p->uid == $< && $p->cmndline =~ m/sh RUN paPAML/) {
+		#		my @a = split(/\s+/, $p->cmndline);
+		#		printf("%d: %s\n", $p->pid, $a[3]);
+		#	}
+		#}
+
+		message(">", "Runs");
+		foreach my $ctlname (@ctlnames) {
+			if (-f "$ctlname.result") {
+				message("I", "Run $ctlname is finished!");
+				next;
+			}
+			my @a = grep {$_ =~ m/treefile\s*=/} readFile("$ctlname.ctl");
+			if (@a && $a[0] =~ m/=\s*([^\s]+)/) {
+				my $runs  = getRuns(join("", readFile($1)));
+				my @dones = grep {-f "$_/DONE"} <$ctlname-*>;
+				message("I", sprintf("Run $ctlname finished: %.1f%%", @dones / $runs * 100.0));
+			}
+			else {
+				message("E", "No treefile in run $ctlname found!");
 			}
 		}
 		exit(0);
@@ -1108,29 +1241,37 @@ sub main {
 
 	my $codeml = which("codeml");
 	if (!$codeml) {
-		print "[E] There is no program called codeml!\n";
+		message("E", "There is no program called codeml in path!");
 		exit(1);
 	}
 
 	my $hyphy = which("hyphy");
 	if (!$hyphy) {
-		print "[E] There is no program called hyphy!\n";
+		message("E", "There is no program called hyphy in path!");
 		exit(1);
 	}
 
 	if (!@ctlnames) {
-		print "[E] There is no control file!\n";
+		message("E", "There is no control file!");
 		exit(1);
 	}
 
 	symlink($codeml, $codemlpgm);
-	symlink($hyphy, $hyphypgm);
+	symlink($hyphy,  $hyphypgm);
 
-	cleanErrors(@ctlnames);
+	cleanUndones(@ctlnames);
 
 	loop();
 
 	cleanSymlinks();
+
+	my $runtime = time - $startime;
+	if (-f $RUNTIMEFILE) {
+		$runtime += join("", readFile($RUNTIMEFILE));
+		unlink($RUNTIMEFILE);
+	}
+
+	message(">", sprintf("The total runtime was %.1f minutes", $runtime / 60));
 }
 
 main();
