@@ -1,4 +1,4 @@
-**2022-09-17 **
+**2022-09-17**
 
 Enhance output format and overall runtime message
 
