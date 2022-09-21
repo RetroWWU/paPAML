@@ -30,8 +30,6 @@ use File::Which qw(which);
 use Proc::ProcessTable;
 use Statistics::Distributions;
 
-my $RUNTIMEFILE = "runtime";
-
 # The tag/extension for the links of running codeml, hyphy by special name
 my $tag       = time;
 my $codemlpgm = "codeml-$tag";
@@ -189,10 +187,10 @@ DEFAULT CODEML-PARAMETERS
 $p
 
 DESCRIPTION
-    This program takes the specified or all control files (*.ctl) of
-    the actual folder and calls paml/codeml and hyphy (in paralell as
+    This program takes specified or all control files (*.ctl) of the
+    actual folder and calls paml/codeml and hyphy (in paralell as
     background processes) for them.  There are several tests that are
-    done:
+    done, either all or selected ones:
 
     * test 1:
       Site specific (one run without marker)
@@ -238,42 +236,27 @@ DESCRIPTION
     correspond together, the first for branch site mode and the second
     for the branch model, both without fixomega.
 
-    The log output will have the form
-
-      [T yyyy-mm-dd hh:mm:ss] Same message
-
-    where T is an indicator.  "E" is Error, "I" is additional info and
-    ">" marking a special event.  In the end you will get an info
-    about the total runetime taken like
-
-      [> 2022-09-17 11:12:11] The total runtime was 37.6 minutes
-
-    To establish this the program calculates the runtime it took.  On
-    an interruption the runtime is put in the file called "runtime".
-    On continuation this file is added to the runtime the program
-    took.  This will happen even several times.  If the run finnished
-    successfully this file is removed.
-
     As already mentioned, a finished run in a subfolder will have a
     file called DONE - this is the indicator that the calculation for
     that specific run/tree is done.  On the other hand on an error
     there exists a file called ERROR.
 
     The program stays running, as long as your codeml or hyphy jobs
-    are working.  If you press CTRL-C the program terminates and all
+    are working.  If you press CTRL-C the program finnishes and all
     running codeml and hyphy runs are canceled.
 
     When all runs finnished succesfully (or if in the meantime all
     needed jobs of a control file are done) there will be a *.result
     and a *.result.fa file for every *.ctl file found and the
-    generated subfolders will be removed.  You can skip the deletion
-    of the generated subfolders, when you use the -d (debug)
-    parameter.
+    generated subfolders will be removed (calling without the "-d"
+    parameter!).
 
-    Restarting paPAML.pl again after a termination or with error runs
-    will first remove the subfolders without a DONE file and rerun
-    those runs again.  Meaning: you can restart as many times as long
-    as not all runs are done.
+    Restarting paPAML.pl again with error runs will first remove the
+    folders with ERROR files and rerun those runs again.
+
+    An interrupted run can/will start from the point (subfolder) where
+    it was stopped (it has no DONE file!) - as long as the
+    intermediate data was not deleted.
 
     If a *.result file exists for a *.ctl file, the run(s) will be
     skipped if it is started again.
@@ -287,35 +270,15 @@ if (!@ARGV) {
 
 #
 # ------------------------------------------------------------------------
-# Returns the date as a string
-# ------------------------------------------------------------------------
-#
-sub getDate {
-	my ($sec, $min, $hour, $mday, $mon, $year) = localtime(time);
-	return sprintf("%4d-%02d-%02d %02d:%02d:%02d", $year + 1900, $mon + 1, $mday, $hour, $min, $sec);
-}
-
-#
-# ------------------------------------------------------------------------
-# Prints a message
-# ------------------------------------------------------------------------
-#
-sub message {
-	my ($type, $message) = @_;
-	printf("[%1s %s] %s\n", $type ? $type : "-", getDate(), $message);
-}
-
-#
-# ------------------------------------------------------------------------
 # Clean all generated files for control files not needed any more
 # ------------------------------------------------------------------------
 #
 sub cleanRuns {
 	for my $ctlname (@_) {
-		message(">", "Clean $ctlname...");
+		print "==> Clean $ctlname...\n";
 		my @dirs = grep {-d $_} <$ctlname-*>;
 		for my $dir (@dirs) {
-			message("", "Clean run $dir...");
+			print "Clean run $dir...\n";
 			rmtree($dir);
 		}
 	}
@@ -331,7 +294,7 @@ sub cleanUndones {
 		my @dirs = grep {-d $_} <$ctlname-*>;
 		for my $dir (@dirs) {
 			if (!-f "$dir/DONE") {
-				message(">", "Clean error run $dir...");
+				print "==> Clean error run $dir...\n";
 				rmtree($dir);
 			}
 		}
@@ -346,7 +309,7 @@ sub cleanUndones {
 sub cleanSymlinks {
 	for my $pgm ($codemlpgm, $hyphypgm) {
 		if (-l $pgm) {
-			message(">", "Clean symlink $pgm");
+			print "==> Clean symlink $pgm\n";
 			unlink($pgm);
 		}
 	}
@@ -369,7 +332,7 @@ sub getParams {
 		elsif ($p eq "-p") {
 			$para = $ARGV[$i++ + 1];
 			if (!($para =~ m/^\d+$/)) {
-				message("E", "Parameter -p needs an integer value!");
+				print "[E] Parameter -p needs an integer value!\n";
 				exit(1);
 			}
 		}
@@ -382,7 +345,7 @@ sub getParams {
 				push(@errors, $file) if (!-f $file);
 			}
 			if (@errors) {
-				message("E", "Control file(s) " . join(",", @errors) . " do not exist!");
+				print "[E] Control file(s) " . join(",", @errors) . " do not exist!\n";
 				exit(1);
 			}
 			@ctlnames = @a;
@@ -395,7 +358,7 @@ sub getParams {
 			$tests .= "3" if ($s =~ m/3/);
 			$tests .= "h" if ($s =~ m/h/);
 			if (!($tests =~ m/^[123h]+$/)) {
-				message("E", "Parameter -t needs value(s) of 1, 2, 3 and/or h!");
+				print "[E] Parameter -t needs value(s) of 1, 2, 3 and/or h!\n";
 				exit(1);
 			}
 			if ($tests ne $s) {
@@ -405,7 +368,7 @@ sub getParams {
 		elsif ($p eq "-s") {
 			$significance = $ARGV[$i++ + 1];
 			if (!($significance =~ m/^\d*\.?\d+$/)) {
-				message("E", "Parameter -s needs a float value!");
+				print "[E] Parameter -s needs a float value!\n";
 				exit(1);
 			}
 		}
@@ -425,7 +388,7 @@ sub getParams {
 	$count++ if ($info);
 	$count++ if ($para);
 	if ($count != 1) {
-		message("E", "The parameters are incorrect!");
+		print "[E] The parameters are incorrect!\n";
 		exit(1);
 	}
 }
@@ -489,14 +452,11 @@ sub getSubpids {
 # ------------------------------------------------------------------------
 #
 sub terminate {
-	message(">", "Terminate...");
-
-	my $runtime = -f $RUNTIMEFILE ? join("", readFile($RUNTIMEFILE)) : 0;
-	writeFile($RUNTIMEFILE, $runtime + (time - $startime));
+	print "==> Terminate...\n";
 
 	my @pids = getSubpids();
 	for my $pid (@pids) {
-		message("", "process $pid...");
+		print "--> process $pid...\n";
 		kill(15, $pid) if (kill(0, $pid));
 	}
 
@@ -504,7 +464,7 @@ sub terminate {
 
 	@pids = getSubpids();
 	for my $pid (@pids) {
-		message("", "process $pid...");
+		print "--> process $pid...\n";
 		kill(9, $pid) if (kill(0, $pid));
 	}
 
@@ -539,7 +499,7 @@ sub getFinnish {
 sub dowait {
 	while (1) {
 		if ($lasttimecheck + $lasttimeinterval < time) {
-			message("I", "Estimated time to finnish all runs: %s\n", getFinnish());
+			printf("[I] Estimated time to finnish all runs: %s\n", getFinnish());
 			$lasttimecheck = time;
 		}
 		my @pids = getSubpids();
@@ -588,13 +548,13 @@ sub printErrors {
 		my $error = 0;
 		for my $dir (@dirs) {
 			if (-f "$dir/ERROR") {
-				message("E", "There are errors in run $dir!");
+				print "[E] There are errors in run $dir!\n";
 				$error = 1;
 			}
 			my @a = qx(grep "is missing in the tree" $dir/codeml.log) if (-f "$dir/codeml.log");
 			for my $s (@a) {
 				chomp($s);
-				message("E", "Error from codeml run $dir: $s");
+				print "[E] Error from codeml run $dir: $s\n";
 				$error = 1;
 			}
 		}
@@ -906,7 +866,7 @@ sub generate {
 		map {$count++ if (-f "$_/DONE")} @dirs;
 		next if ($count < @dirs);
 
-		message(">", "Generate result for $ctlname...");
+		print "==> Generate result for $ctlname...\n";
 
 		open(RESULT, ">", $resultfile);
 
@@ -981,7 +941,7 @@ sub runCodeml {
 	dowait();
 
 	$ctlindex++;
-	message(">", sprintf("Start %s-%02d-%05d [started or finished %s]", $ctlname, $treetype, $treeno, getSuccess()));
+	printf("--> Start %s-%02d-%05d [started or finished %s]\n", $ctlname, $treetype, $treeno, getSuccess());
 
 	mkdir($subdir);
 	chdir($subdir);
@@ -1011,7 +971,7 @@ sub runHyphy {
 	dowait();
 
 	$ctlindex++;
-	message(">", sprintf("Start %s [started or finished %s]", $subdir, getSuccess()));
+	printf("--> Start %s [started or finished %s]\n", $subdir, getSuccess());
 
 	mkdir($subdir);
 	chdir($subdir);
@@ -1028,7 +988,7 @@ sub runHyphy {
 
 #
 # ------------------------------------------------------------------------------
-# Returns the total number of runs depending on the tree
+# Prepare data
 # ------------------------------------------------------------------------------
 #
 sub getRuns {
@@ -1090,11 +1050,11 @@ sub prepare {
 	}
 
 	if (!$seqfile || !-f $seqfile) {
-		messaeg("E", "Missing seqfile $seqfile!");
+		print "[E] Missing seqfile $seqfile!\n";
 		return;
 	}
 	if (!$treefile || !-f $treefile) {
-		message("E", "Missing treefile $treefile!");
+		print "[E] Missing treefile $treefile!\n";
 		return;
 	}
 
@@ -1106,7 +1066,7 @@ sub prepare {
 	$ctlindex = grep {-f "$_/DONE"} <$ctlname-*>;
 
 	if (!$ctlcount) {
-		message("E", "It seems that there are no runs to be done!");
+		print "[E] It seems that there are no runs to be done!\n";
 		return;
 	}
 
@@ -1122,18 +1082,18 @@ sub loop {
 	for my $ctlname (@ctlnames) {
 		my $resultfile = "$ctlname.result";
 		if (-f $resultfile) {
-			message("I", "The run for $ctlname is already done!");
+			print "[I] The run for $ctlname is already done!\n";
 			next;
 		}
 
-		message(">", "Take run $ctlname...");
+		print "==> Take run $ctlname...\n";
 
 		my @a = prepare($ctlname);
 		next if (!@a);
 
 		my ($seqfile, $treefile, $tree, $ctl) = @a;
 
-		message("I", "There are $ctlindex of $ctlcount runs already done...");
+		print "[I] There are $ctlindex of $ctlcount runs already done...\n";
 
 		# Site specific
 		if ($tests =~ m/1/) {
@@ -1178,7 +1138,7 @@ sub loop {
 		}
 	}
 
-	message(">", "Waiting to finish remaining runs...");
+	print "==> Waiting to finish remaining runs...\n";
 	while (1) {
 		my @pids = getSubpids();
 		last if (!@pids);
@@ -1189,7 +1149,7 @@ sub loop {
 
 	printErrors();
 
-	message(">", "Finished!");
+	print "==> Finished!\n";
 }
 
 #
@@ -1216,20 +1176,20 @@ sub main {
 		#	}
 		#}
 
-		message(">", "Runs");
+		print "==> Runs:\n";
 		foreach my $ctlname (@ctlnames) {
 			if (-f "$ctlname.result") {
-				message("I", "Run $ctlname is finished!");
+				printf("[I] Run $ctlname is finished!\n");
 				next;
 			}
 			my @a = grep {$_ =~ m/treefile\s*=/} readFile("$ctlname.ctl");
 			if (@a && $a[0] =~ m/=\s*([^\s]+)/) {
 				my $runs  = getRuns(join("", readFile($1)));
 				my @dones = grep {-f "$_/DONE"} <$ctlname-*>;
-				message("I", sprintf("Run $ctlname finished: %.1f%%", @dones / $runs * 100.0));
+				printf("[I] Run $ctlname finished: %.1f%%\n", @dones / $runs * 100.0);
 			}
 			else {
-				message("E", "No treefile in run $ctlname found!");
+				printf("[E] No treefile in run $ctlname found!\n");
 			}
 		}
 		exit(0);
@@ -1241,18 +1201,18 @@ sub main {
 
 	my $codeml = which("codeml");
 	if (!$codeml) {
-		message("E", "There is no program called codeml in path!");
+		print "[E] There is no program called codeml in path!\n";
 		exit(1);
 	}
 
 	my $hyphy = which("hyphy");
 	if (!$hyphy) {
-		message("E", "There is no program called hyphy in path!");
+		print "[E] There is no program called hyphy in path!\n";
 		exit(1);
 	}
 
 	if (!@ctlnames) {
-		message("E", "There is no control file!");
+		print "[E] There is no control file!\n";
 		exit(1);
 	}
 
@@ -1264,14 +1224,6 @@ sub main {
 	loop();
 
 	cleanSymlinks();
-
-	my $runtime = time - $startime;
-	if (-f $RUNTIMEFILE) {
-		$runtime += join("", readFile($RUNTIMEFILE));
-		unlink($RUNTIMEFILE);
-	}
-
-	message(">", sprintf("The total runtime was %.1f minutes", $runtime / 60));
 }
 
 main();
