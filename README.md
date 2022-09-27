@@ -1,4 +1,4 @@
-![paPAML Logo](https://github.com/RetroWWU/paPAML/README.jpg)
+![paPAML Logo](https://github.com/RetroWWU/paPAML/paPAML.jpg)
 
 # Description
 
