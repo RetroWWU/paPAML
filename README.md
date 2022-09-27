@@ -1,3 +1,5 @@
+![paPAML Logo](https://github.com/RetroWWU/paPAML/edit/main/README.jpg)
+
 # Description
 
 paPAML simplifies, amplifies, and accelerates selection analyses via parallel processing, including detection of negatively selected sites. paPAML compiles results of site, branch, and branch-site models and detects site-specific negative selection with the output of a codon list labelling significance values. The tool simplifies selection analyses for casual and inexperienced users and accelerates computing speeds up to the number of allocated computer threads
