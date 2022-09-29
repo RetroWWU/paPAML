@@ -1273,6 +1273,12 @@ sub main {
 	}
 
 	message(">", sprintf("The total runtime was %.1f minutes", $runtime / 60));
+
+	# Set exit code if at least one run and one (sub-)tree failed
+	for my $ctlname (@ctlnames) {
+		my @dirs = grep {-d $_} <$ctlname-*>;
+		exit(1) if (@dirs);
+	}
 }
 
 main();
