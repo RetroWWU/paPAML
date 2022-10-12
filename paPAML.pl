@@ -50,7 +50,7 @@ my @ctlnames;
 # The starttime of this run and the last time check and the interval.
 # The lasttimecheck is put in "future" to have at least some time left
 # for a prognose
-my ($starttime, $lasttimecheck, $lasttimeinterval) = (time, time + 60, 60);
+my ($starttime, $lasttimecheck, $lasttimeinterval) = (time, time + 600, 600);
 
 # The actual (total) number of runs
 my $runindex = 0;
@@ -1120,6 +1120,8 @@ sub prepare {
 # ------------------------------------------------------------------------------
 #
 sub loop {
+	cleanUndones(@ctlnames);
+
 	for my $ctlname (@ctlnames) {
 		my $resultfile = "$ctlname.result";
 		if (-f $resultfile) {
@@ -1217,7 +1219,6 @@ sub main {
 		#	}
 		#}
 
-		message(">", "Runs");
 		foreach my $ctlname (@ctlnames) {
 			if (-f "$ctlname.result") {
 				message("I", "Run $ctlname is finished!");
@@ -1225,9 +1226,9 @@ sub main {
 			}
 			my @a = grep {$_ =~ m/treefile\s*=/} readFile("$ctlname.ctl");
 			if (@a && $a[0] =~ m/=\s*([^\s]+)/) {
-				my $runs  = getRuns(join("", readFile($1)));
-				my @dones = grep {-f "$_/DONE"} <$ctlname-*>;
-				message("I", sprintf("Run $ctlname finished: %.1f%%", @dones / $runs * 100.0));
+				my $n = getRuns(join("", readFile($1)));
+				my @a = grep {-f "$_/DONE"} <$ctlname-*>;
+				message("I", sprintf("Run $ctlname finished: %.1f%% (%d/%d)", @a / $n * 100.0, @a, $n));
 			}
 			else {
 				message("E", "No treefile in run $ctlname found!");
@@ -1259,8 +1260,6 @@ sub main {
 
 	symlink($codeml, $codemlpgm);
 	symlink($hyphy,  $hyphypgm);
-
-	cleanUndones(@ctlnames);
 
 	loop();
 
