@@ -1228,7 +1228,7 @@ sub main {
 			if (@a && $a[0] =~ m/=\s*([^\s]+)/) {
 				my $n = getRuns(join("", readFile($1)));
 				my @a = grep {-f "$_/DONE"} <$ctlname-*>;
-				message("I", sprintf("Run $ctlname finished: %.1f%% (%d/%d)", @a / $n * 100.0, @a, $n));
+				message("I", sprintf("Run $ctlname finished: %.1f%% (%d/%d)", @a / $n * 100.0), @a, $n);
 			}
 			else {
 				message("E", "No treefile in run $ctlname found!");
