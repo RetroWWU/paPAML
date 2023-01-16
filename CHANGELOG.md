@@ -1,6 +1,6 @@
 **2023-01-16**
 
-Remove 1 type in code and skip invalid test 3 scenario
+Remove a typo in code and skip invalid test 3 scenario
 
 **2022-09-17**
 
