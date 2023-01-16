@@ -2,7 +2,6 @@
 
 #
 # ==============================================================================
-# [2023-01-16] v2.1: correct a type and test 3 results
 # [2022-09-15] v2.0: Extend runtime info
 # [2022-06-07] v1.23: Correct tree with weights
 # [2022-06-01] v1.22: Add fasta sequences
@@ -165,7 +164,7 @@ USAGE
     paPAML.pl -i [-f controlfiles]
     paPAML.pl -c
 
-VERSION 2.1
+VERSION 2.0
 
 WHERE
     runs         - the number of parallel runs
@@ -744,8 +743,6 @@ sub generateCodeml {
 				}
 			}
 
-			next if (!$np0 || !$lnl0 || !$np1 || $lnl1);
-
 			my $dltr = abs(2 * ($lnl1 - $lnl0));
 			my $dn   = abs($np1 - $np0);
 			my $p    = Statistics::Distributions::chisqrprob($dn, $dltr);
@@ -945,13 +942,13 @@ sub mark {
 
 	my $index = index($tree, " #1");
 	if ($index < 0) {
-		$tree =~ s/([a-z][a-z0-9\_\-]+|\))([\d\.\:\[\]]+|)?/$1$2 #1/i;
+		$tree =~ s/(\w+|\))([\d\.\:\[\]]+)?/$1$2 #1/;
 	}
 	else {
 		$tree =~ m/^(.*) #1(.*)$/;
 		my ($head, $tail) = ($1, $2);
 		return "" if (!($tail =~ m/[\w\:\.]/));
-		$tail =~ s/([a-z][a-z0-9\_\-]+|\))([\d\.\:\[\]]+|)?/$1$2 #1/i;
+		$tail =~ s/(\w+|\))([\d\.\:\[\]]+)?/$1$2 #1/;
 		$tree = "$head$tail";
 	}
 
@@ -1094,7 +1091,7 @@ sub prepare {
 	}
 
 	if (!$seqfile || !-f $seqfile) {
-		message("E", "Missing seqfile $seqfile!");
+		messaeg("E", "Missing seqfile $seqfile!");
 		return;
 	}
 	if (!$treefile || !-f $treefile) {
