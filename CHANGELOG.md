@@ -1,3 +1,7 @@
+**2023-01-20**
+
+add *.result_aa.fa file for amino acids
+
 **2023-01-16**
 
 Remove a typo in code and skip invalid test 3 scenario
