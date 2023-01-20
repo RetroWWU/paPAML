@@ -2,6 +2,8 @@
 
 #
 # ==============================================================================
+# [2023-01-20] v2.2: add *.result_aa.fa file for amino acids
+# [2023-01-16] v2.1: correct a type and test 3 results
 # [2022-09-15] v2.0: Extend runtime info
 # [2022-06-07] v1.23: Correct tree with weights
 # [2022-06-01] v1.22: Add fasta sequences
@@ -164,7 +166,7 @@ USAGE
     paPAML.pl -i [-f controlfiles]
     paPAML.pl -c
 
-VERSION 2.0
+VERSION 2.1
 
 WHERE
     runs         - the number of parallel runs
@@ -743,6 +745,8 @@ sub generateCodeml {
 				}
 			}
 
+			next if (!$np0 || !$lnl0 || !$np1 || $lnl1);
+
 			my $dltr = abs(2 * ($lnl1 - $lnl0));
 			my $dn   = abs($np1 - $np0);
 			my $p    = Statistics::Distributions::chisqrprob($dn, $dltr);
@@ -841,33 +845,48 @@ sub generateSequence {
 
 );
 
-	my ($b12, $b78, $b, $hn, $hp);
+	my ($b12,  $b78,  $b,  $hn,  $hp);
+	my ($b12_, $b78_, $b_, $hn_, $hp_);
+
 	my $count = length($seq) / 3;
 
 	# Loop over codons
 	for (my $i = 0 ; $i < $count ; $i++) {
 		my $codon = substr($seq, $i * 3, 3);
 		my ($cu, $cl) = (uc($codon), lc($codon));
+		my $u = uc($codon);
+		my ($aau, $aal) = ($aacode{$u}, lc($aacode{$u}));
 		my $cd    = $codondata->{$i};
 		my $trees = substr($cd->{"2"}, 1);
+
+		my $x_b12 = exists $bayes12->{$i};
+		my $x_b78 = exists $bayes78->{$i};
+		my $x_hm  = exists $cd->{"h-"};
+		my $x_hp  = exists $cd->{"h+"};
 
 		printf RESULT (
 			"%d\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n",
 			$i + 1,
 			$codon,
 			$aacode{$codon},
-			exists $bayes12->{$i} ? sprintf("%0.4f", $bayes12->{$i}) : ".",
-			exists $bayes78->{$i} ? sprintf("%0.4f", $bayes78->{$i}) : ".",
-			$trees                ? $trees                           : ".",
-			exists $cd->{"h-"}    ? sprintf("%0.4f", $cd->{"h-"})    : ".",
-			exists $cd->{"h+"}    ? sprintf("%0.4f", $cd->{"h+"})    : "."
+			$x_b12 ? sprintf("%0.4f", $bayes12->{$i}) : ".",
+			$x_b78 ? sprintf("%0.4f", $bayes78->{$i}) : ".",
+			$trees ? $trees                           : ".",
+			$x_hm  ? sprintf("%0.4f", $cd->{"h-"})    : ".",
+			$x_hp  ? sprintf("%0.4f", $cd->{"h+"})    : "."
 		);
 
-		$b12 .= exists $bayes12->{$i} ? $cu : $cl;
-		$b78 .= exists $bayes78->{$i} ? $cu : $cl;
-		$b   .= $trees                ? $cu : $cl;
-		$hn  .= exists $cd->{"h-"}    ? $cu : $cl;
-		$hp  .= exists $cd->{"h+"}    ? $cu : $cl;
+		$b12 .= $x_b12 ? $cu : $cl;
+		$b78 .= $x_b78 ? $cu : $cl;
+		$b   .= $trees ? $cu : $cl;
+		$hn  .= $x_hm  ? $cu : $cl;
+		$hp  .= $x_hp  ? $cu : $cl;
+
+		$b12_ .= $x_b12 ? $aau : $aal;
+		$b78_ .= $x_b78 ? $aau : $aal;
+		$b_   .= $trees ? $aau : $aal;
+		$hn_  .= $x_hm  ? $aau : $aal;
+		$hp_  .= $x_hp  ? $aau : $aal;
 	}
 
 	open(FASTA, ">", "$ctlname.result.fa");
@@ -876,6 +895,14 @@ sub generateSequence {
 	print FASTA qq(>T2_Bayes\n$b\n);
 	print FASTA qq(>Hyphy_negative\n$hn\n);
 	print FASTA qq(>Hyphy_positive\n$hp\n);
+	close(FASTA);
+
+	open(FASTA, ">", "$ctlname.result_aa.fa");
+	print FASTA qq(>T1_Bayes_1_2\n$b12_\n);
+	print FASTA qq(>T1_Bayes_7_8\n$b78_\n);
+	print FASTA qq(>T2_Bayes\n$b_\n);
+	print FASTA qq(>Hyphy_negative\n$hn_\n);
+	print FASTA qq(>Hyphy_positive\n$hp_\n);
 	close(FASTA);
 }
 
@@ -942,13 +969,13 @@ sub mark {
 
 	my $index = index($tree, " #1");
 	if ($index < 0) {
-		$tree =~ s/(\w+|\))([\d\.\:\[\]]+)?/$1$2 #1/;
+		$tree =~ s/([a-z][a-z0-9\_\-]+|\))([\d\.\:\[\]]+|)?/$1$2 #1/i;
 	}
 	else {
 		$tree =~ m/^(.*) #1(.*)$/;
 		my ($head, $tail) = ($1, $2);
 		return "" if (!($tail =~ m/[\w\:\.]/));
-		$tail =~ s/(\w+|\))([\d\.\:\[\]]+)?/$1$2 #1/;
+		$tail =~ s/([a-z][a-z0-9\_\-]+|\))([\d\.\:\[\]]+|)?/$1$2 #1/i;
 		$tree = "$head$tail";
 	}
 
@@ -1091,7 +1118,7 @@ sub prepare {
 	}
 
 	if (!$seqfile || !-f $seqfile) {
-		messaeg("E", "Missing seqfile $seqfile!");
+		message("E", "Missing seqfile $seqfile!");
 		return;
 	}
 	if (!$treefile || !-f $treefile) {
