@@ -166,7 +166,7 @@ USAGE
     paPAML.pl -i [-f controlfiles]
     paPAML.pl -c
 
-VERSION 2.1
+VERSION 2.2
 
 WHERE
     runs         - the number of parallel runs
@@ -266,10 +266,10 @@ DESCRIPTION
     running codeml and hyphy runs are canceled.
 
     When all runs finnished succesfully (or if in the meantime all
-    needed jobs of a control file are done) there will be a *.result
-    and a *.result.fa file for every *.ctl file found and the
-    generated subfolders will be removed.  You can skip the deletion
-    of the generated subfolders, when you use the -d (debug)
+    needed jobs of a control file are done) there will be a *.result a
+    *.result.fa and a *.result_aa.fa file for every *.ctl file found
+    and the generated subfolders will be removed.  You can skip the
+    deletion of the generated subfolders, when you use the -d (debug)
     parameter.
 
     Restarting paPAML.pl again after a termination or with error runs
@@ -401,7 +401,7 @@ sub getParams {
 				exit(1);
 			}
 			if ($tests ne $s) {
-				print "--> Parameter tests (-t) is changed to $tests!\n";
+				message("I", "Parameter tests (-t) is changed to $tests!");
 			}
 		}
 		elsif ($p eq "-s") {
@@ -413,6 +413,12 @@ sub getParams {
 		}
 		elsif ($p eq "-d") {
 			$debug = 1;
+		}
+		elsif ($p eq "-runmode") {
+			my $runmode = $ARGV[$i++ + 1];
+			if ($runmode != 0) {
+				message("W", "Runmode <> 0 may produce no or invalid results!");
+			}
 		}
 		else {
 			if ($p =~ m/^-/) {
