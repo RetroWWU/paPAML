@@ -980,9 +980,9 @@ sub mark {
 	else {
 		$tree =~ m/^(.*) #1(.*)$/;
 		my ($head, $tail) = ($1, $2);
-		return "" if (!($tail =~ m/[\w\:\.]/));
 		$tail =~ s/([a-z][a-z0-9\_\-]+|\))([\d\.\:\[\]]+|)?/$1$2 #1/i;
 		$tree = "$head$tail";
+		$tree = "" if (!($tree =~ m/#1/));
 	}
 
 	return $tree;
