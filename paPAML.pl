@@ -2,6 +2,7 @@
 
 #
 # ==============================================================================
+# [2023-03-28] v2.3: Add omega calculation
 # [2023-01-20] v2.2: add *.result_aa.fa file for amino acids
 # [2023-01-16] v2.1: correct a type and test 3 results
 # [2022-09-15] v2.0: Extend runtime info
@@ -44,6 +45,7 @@ my $significance = 0.05;
 my $para         = 0;
 my $tests        = "123h";
 my $debug        = 0;
+my $species;
 
 my ($info, $clean);
 
@@ -162,11 +164,11 @@ sub usage {
 
 	print <<EOF;
 USAGE
-    paPAML.pl -p runs [-f controlfiles] [-t tests] [-s significance] [-d] {codemlparams}
+    paPAML.pl -p runs [-f controlfiles] [-t tests] [-s significance] [-o species] -d] {codemlparams}
     paPAML.pl -i [-f controlfiles]
     paPAML.pl -c
 
-VERSION 2.2
+VERSION 2.3
 
 WHERE
     runs         - the number of parallel runs
@@ -180,12 +182,17 @@ WHERE
     significance - the maximum p value to print marked trees.  Used for
                    printing bayes values and in hyphy call
                    (default: $significance)
+    species      - the species where the omega values are calculated
+                   (default: $species)
     -d           - the generated result directories are kept and not deleted
     -i           - info about your runs
     -c           - clean all temporary folders
     codemlparams - additional parameters for the ctl file, if not provided
                    the default parameters will be used.
                    (example: -Mgene 9 -rho 34)
+
+NOTE
+    The -o (species) option is under development and actually not usable!
 
 DEFAULT CODEML-PARAMETERS
 $p
@@ -239,6 +246,16 @@ DESCRIPTION
     numbers start with zero. The folders abc-20-00012 and abc-30-00012
     correspond together, the first for branch site mode and the second
     for the branch model, both without fixomega.
+
+    The -o (omega) specification has a special meaning.  It uses the
+    model = "2", nssites = "0", fixomega = "0" setting for codeml and
+    generates an additionl output file called *.result.omega with the
+    dN/dN values of a specified species related branches.  The output is
+
+      Tree dn/ds_background dn/ds_foreground
+      ((1 #1,2),3) 0.40097 0.94020
+      ((1,2 #2),3) 0.12 1.2
+      ...
 
     The log output will have the form
 
@@ -410,6 +427,10 @@ sub getParams {
 				message("E", "Parameter -s needs a float value!");
 				exit(1);
 			}
+		}
+		elsif ($p eq "-o") {
+			$species = $ARGV[$i++ + 1];
+			$tests .= "3" if (!($tests =~ m/3/));
 		}
 		elsif ($p eq "-d") {
 			$debug = 1;
@@ -751,7 +772,7 @@ sub generateCodeml {
 				}
 			}
 
-			next if (!$np0 || !$lnl0 || !$np1 || $lnl1);
+			next if (($np0 == $np1) || ($lnl0 == $lnl1));
 
 			my $dltr = abs(2 * ($lnl1 - $lnl0));
 			my $dn   = abs($np1 - $np0);
@@ -774,7 +795,7 @@ sub generateCodeml {
 					map {$codondata->{$_->[0] - 1}->{"2"} .= sprintf(",Tree_%d:%0.3f", ($treeno + 1), 1 - $_->[2])} @b1;
 				}
 
-				printf RESULT ("%s\t%f\t%d\t%f\n", "Test_" . ($treeno + 1), $dltr, $dn, $p);
+				printf RESULT ("%s\t%f\t%d\t%f\t%f\n", "Test_" . ($treeno + 1), $dltr, $dn, $p, $p / @dirs0);
 			}
 		}
 	}
@@ -914,6 +935,180 @@ sub generateSequence {
 
 #
 # ------------------------------------------------------------------------------
+# Return the tree if species matches
+# ------------------------------------------------------------------------------
+#
+sub isOmega {
+	my ($tree) = @_;
+
+	# Species and #1 direct together
+	if ($tree =~ m/[^A-Za-z0-9\_\-]$species #1/) {
+		return 1;
+	}
+
+	# Species inside balanced braces and a following #1
+	elsif ($tree =~ m/^(.*?\)) #1/) {
+		my $s = $1;
+		my $n = 0;
+		for (my $i = length($s) - 1 ; $i >= 0 ; $i--) {
+			my $c = substr($s, $i, 1);
+			if ($c eq ")") {
+				$n++;
+			}
+			elsif ($c eq "(") {
+				$n--;
+			}
+			if ($n == 0) {
+				my $t = substr($s, $i);
+				return $t =~ m/[^A-Za-z0-9\_\-]$species[^A-Za-z0-9\_\-]/ ? 1 : 0;
+			}
+		}
+	}
+
+	return 0;
+}
+
+#
+# ------------------------------------------------------------------------------
+# Prints the species / omega based data and create a graph
+# ------------------------------------------------------------------------------
+#
+sub generateOmega {
+	my ($ctlname, $test) = @_;
+
+	# Get folders without fixomega
+	my @dirs0 = <$ctlname-${test}0-*>;
+	my @dirs1 = <$ctlname-${test}1-*>;
+
+	# Omega tree
+	my $otree;
+	my @a = readFile("$ctlname.ctl");
+	for (my $i = 0 ; !$otree && $i < @a ; $i++) {
+		if ($a[$i] =~ m/treefile\s*=\s*([^\s]+)/) {
+			$otree = (readFile($1))[0];
+		}
+	}
+
+	my $diff = 0;
+	my $hs   = 0;
+	my @rows;
+
+	# Loop over all directories (trees)
+	for (my $treeno = 0 ; $treeno < @dirs0 ; $treeno++) {
+		my ($mtree, $dn, $ds);
+
+		# Extract marked tree
+		my @a = readFile("$dirs0[$treeno]/codeml.ctl");
+		for (my $i = 0 ; !$mtree && $i < @a ; $i++) {
+			if ($a[$i] =~ m/treefile\s*=\s*([^\s]+)/) {
+				$mtree = (readFile("$dirs0[$treeno]/$1"))[1];
+			}
+		}
+
+		# Check and get omega values
+		if (isOmega($mtree)) {
+			my @lines0 = readFile("$dirs0[$treeno]/mlc");
+			my @lines1 = readFile("$dirs1[$treeno]/mlc");
+
+			# Calculate background/foreground values
+			if ($test eq "2") {
+				my (@p, @b, @f);
+				my $i = 0;
+				while ($i < @lines0) {
+					last if ($lines0[$i++] =~ m/^site\s+class\s+/);
+				}
+				while ($i < @lines0) {
+					my $line = $lines0[$i++];
+					if ($line =~ m/^proportion\s+([\d\.]+)\s+([\d\.]+)\s+([\d\.]+)\s+([\d\.]+)/) {
+						@p = ($1, $2, $3, $4);
+					}
+					elsif ($line =~ m/^background\s+w\s+([\d\.]+)\s+([\d\.]+)\s+([\d\.]+)\s+([\d\.]+)/) {
+						@b = ($1, $2, $3, $4);
+					}
+					elsif ($line =~ m/^background\s+w\s+([\d\.]+)\s+([\d\.]+)\s+([\d\.]+)\s+([\d\.]+)/) {
+						@f = ($1, $2, $3, $4);
+					}
+					else {
+						last;
+					}
+				}
+				($dn, $ds) = (0, 0);
+				for (my $i = 0 ; $i < 4 ; $i++) {
+					$dn += $p[$i] * $b[$i];
+					$ds += $p[$i] * $f[$i];
+				}
+			}
+			elsif ($test eq "3") {
+				for (my $i = 0 ; $i < @lines0 ; $i++) {
+					if ($lines0[$i] =~ m/^w \(dN\/dS\)[^:]+:\s+([\d\.]+)\s+([\d\.]+)/) {
+						($dn, $ds) = ($1, $2);
+						last;
+					}
+				}
+			}
+
+			my ($np0, $lnl0);
+			my ($np1, $lnl1);
+
+			# Get np and lnl values
+			for my $line (@lines0) {
+				if ($line =~ m/lnL\(.*?np:\s*(\d+)\):\s*([\d\.\-]+)/) {
+					($np0, $lnl0) = ($1, $2);
+					last;
+				}
+			}
+			for my $line (@lines1) {
+				if ($line =~ m/lnL\(.*?np:\s*(\d+)\):\s*([\d\.\-]+)/) {
+					($np1, $lnl1) = ($1, $2);
+					last;
+				}
+			}
+
+			next if (($np0 == $np1) || ($lnl0 == $lnl1));
+
+			my $dltr = abs(2 * ($lnl1 - $lnl0));
+			my $p    = Statistics::Distributions::chisqrprob(abs($np1 - $np0), $dltr);
+
+			$hs = $significance / @dirs0;
+
+			push(@rows, sprintf("%d\t%s\t%f\t%f\t%f", @rows + 1, $mtree, $dn, $ds, $p));
+
+			# Change next " #1" in otree by values
+			my $s = ":$ds/$p/" . @rows;
+			substr($otree, index($mtree, " #1") + $diff, 0) = $s;
+			$diff += length($s);
+		}
+	}
+
+	if (!@rows) {
+		message("I", "No omega values - files *.result.omega.* are not generated");
+		return;
+	}
+
+	my $omegafile = "$ctlname.result.omega${test}";
+	open(F, ">", $omegafile);
+	printf F ("# Significance: %f\n", $significance);
+	printf F (
+		"# High Significance (corrected for multiple testing via p-value limit divided by number of tests): %f\n\n",
+		$hs
+	);
+	print F "# Number\tTree\tdN/dS_background\tdN/dS_foreground\tP-Value\n\n";
+	for my $row (@rows) {
+		print F $row, "\n";
+	}
+	close(F);
+
+	my $title = ($test == 2 ? "Foreground" : "Background") . " Omega Graph";
+	my ($treefile, $graphfile) = ("$omegafile.tree", "$omegafile.svg");
+	writeFile($treefile, $otree);
+	my $command = qq(paPAML_graph.pl -t "$title" -o $omegafile -g $graphfile -s1 $significance -s2 $hs);
+	if (system($command) != 0) {
+		message("E", "Cannot generate omega graph for test ${test} - paPAML_graph.pl had an error!");
+	}
+}
+
+#
+# ------------------------------------------------------------------------------
 # Look for finished control files and generate results
 # ------------------------------------------------------------------------------
 #
@@ -956,6 +1151,11 @@ sub generate {
 		generateSequence($ctlname, $bayes12, $bayes78, $codondata);
 
 		close(RESULT);
+
+		if ($species) {
+			generateOmega($ctlname, "2");
+			generateOmega($ctlname, "3");
+		}
 
 		if (!$debug) {
 			cleanRuns($ctlname);
