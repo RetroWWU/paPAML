@@ -53,7 +53,7 @@ That's it, too!
 
 The following coding is a quick solution to the conda environment, but it provides a usable conda container environment with name papaml and the main program paPAML.pl which is stored in $HOME/bin folder and is executable.
 
-(1) Install the conda / anaconda environment and enter "yes" to write the cahnges to the shell
+(1) Install the conda / anaconda environment and enter "yes" to write the changes to the shell
 
 (2) Start or restart bash and execute the following commands (note: your prompt should like like: "(base)...")
 
