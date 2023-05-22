@@ -77,10 +77,7 @@ Download paPAML.pl
 
 Add path in .bashrc
 
-export PATH=$PATH:/usr/local/bin 
-
-If the error exists: “Can't locate File/Which.pm in @INC”, you should execute
-
+    # export PATH=$PATH:/usr/local/bin 
     # cpanm --local-lib=~/perl5 local::lib && eval $(perl -I ~/perl5/lib/perl5/ -Mlocal::lib)
 
 ## Conda
