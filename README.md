@@ -51,15 +51,17 @@ That's it, too!
 
 ## macOS X
 
-### install PAML
+The installation under Conda in OSX seems not to be as easy as possible.  So here another way to get it working
+
+* Install PAML
 
 http://abacus.gene.ucl.ac.uk/software/paml.html
 
-### install HYPHY
+* Install HYPHY
 
 https://www.hyphy.org/
 
-### install cpanm
+* Install cpanm
 
     # curl -L https://cpanmin.us | perl - --sudo App::cpanminus
     # cpanm install Proc::ProcessTable
@@ -67,13 +69,13 @@ https://www.hyphy.org/
     # cpanm install Statistics::Distributions
     # cpanm --local-lib=~/perl5 local::lib && eval $(perl -I ~/perl5/lib/perl5/ -Mlocal::lib)
 
-### download paPAML.pl
+* download paPAML.pl
 
     # wget https://raw.githubusercontent.com/RetroWWU/paPAML/main/paPAML.pl
     # chmod u+x paPAML.pl
     # mv paPAML.pl /usr/local/bin
 
-### Add path in .bashrc
+* Add path in .bashrc
 
 export PATH=$PATH:/usr/local/bin 
 
