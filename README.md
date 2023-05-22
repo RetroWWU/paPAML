@@ -79,6 +79,10 @@ Add path in .bashrc
 
 export PATH=$PATH:/usr/local/bin 
 
+If the error exists: “Can't locate File/Which.pm in @INC”, you should execute
+
+    # cpanm --local-lib=~/perl5 local::lib && eval $(perl -I ~/perl5/lib/perl5/ -Mlocal::lib)
+
 ## Conda
 
 The following coding is a quick solution to the conda environment, but it provides a usable conda container environment with name papaml and the main program paPAML.pl which is stored in $HOME/bin folder and is executable.
