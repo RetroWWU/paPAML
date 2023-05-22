@@ -49,6 +49,34 @@ Copy-paste the export command into your shell resource file .bashrc to make it p
 
 That's it, too!
 
+## macOS X
+
+# install PAML:
+
+http://abacus.gene.ucl.ac.uk/software/paml.html
+
+# install HYPHY:
+
+https://www.hyphy.org/
+
+# install cpanm:
+
+    # curl -L https://cpanmin.us | perl - --sudo App::cpanminus
+    # cpanm install Proc::ProcessTable
+    # cpanm install File::Which
+    # cpanm install Statistics::Distributions
+    # cpanm --local-lib=~/perl5 local::lib && eval $(perl -I ~/perl5/lib/perl5/ -Mlocal::lib)
+
+# download paPAML.pl:
+
+wget https://raw.githubusercontent.com/RetroWWU/paPAML/main/paPAML.pl
+chmod u+x paPAML.pl
+mv paPAML.pl /usr/local/bin
+
+# Add path in .bashrc
+
+export PATH=$PATH:/usr/local/bin 
+
 ## Conda
 
 The following coding is a quick solution to the conda environment, but it provides a usable conda container environment with name papaml and the main program paPAML.pl which is stored in $HOME/bin folder and is executable.
