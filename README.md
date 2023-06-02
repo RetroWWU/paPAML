@@ -6,6 +6,10 @@ paPAML simplifies, amplifies, and accelerates selection analyses via parallel pr
 
 # Installation
 
+## Remarks
+
+The tested installation is working with paml version 4.9j and hyphy version 2.5.42. Actually there are problems reported with paml 4.10.  The reason is that parsing a newick tree and the corresponding fasta sequences produces an error.  But paml 4.9j worked fine.
+
 ## FreeBSD (Version 13.*)
 
 The operating system for which paPAML was first developed and tested for was FreeBSD. The installation on this OS is very simple - you don't need any conda environment (but if you need it: see later, there is a "quick" howto), all the needed packages are available in the system repositories. As root (or using sudo), install the following packages with the command:
