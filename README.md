@@ -86,7 +86,7 @@ Add path in .bashrc
 
 ## Windows
 
-A native installation of paPAML on Windows is quite difficult comapred to the other operating systems.  We recommend using Ubuntu or another Unix-System instead. You can install and use these systems without leaving Windows via WSL/WSL2 (Windows Subsystem for Linux, depends on the Windows distribution) or via virtual machine programs like VirtualBox. Afterwards simply follow our installation guideline for Unix systems.
+A native installation of paPAML on Windows is quite difficult compared to other operating systems.  We recommend using Ubuntu or another Unix-System instead. You can install and use these systems without leaving Windows via WSL/WSL2 (Windows Subsystem for Linux, depends on the Windows distribution) or via virtual machine programs like VirtualBox. Afterwards simply follow our installation guideline for Unix systems.
 
 ## Conda
 
