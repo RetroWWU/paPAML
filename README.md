@@ -84,6 +84,10 @@ Add path in .bashrc
     # export PATH=$PATH:/usr/local/bin 
     # cpanm --local-lib=~/perl5 local::lib && eval $(perl -I ~/perl5/lib/perl5/ -Mlocal::lib)
 
+## Windows
+
+A native installation of paPAML on Windows is quite difficult comapred to the other operating systems.  We recommend using Ubuntu or another Unix-System instead. You can install and use these systems without leaving Windows via WSL/WSL2 (Windows Subsystem for Linux, depends on the Windows distribution) or via virtual machine programs like VirtualBox. Afterwards simply follow our installation guideline for Unix systems.
+
 ## Conda
 
 The following coding is a quick solution to the conda environment, but it provides a usable conda container environment with name papaml and the main program paPAML.pl which is stored in $HOME/bin folder and is executable.
