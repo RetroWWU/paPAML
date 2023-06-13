@@ -183,7 +183,6 @@ WHERE
                    printing bayes values and in hyphy call
                    (default: $significance)
     species      - the species where the omega values are calculated
-                   (default: $species)
     -d           - the generated result directories are kept and not deleted
     -i           - info about your runs
     -c           - clean all temporary folders
@@ -630,6 +629,57 @@ sub printErrors {
 		}
 	}
 }
+#
+# ------------------------------------------------------------------------------
+# Returns omega values dn, ds ad the index of the first matching line
+# ------------------------------------------------------------------------------
+#
+sub getOmega {
+	my ($test, $lines) = @_;
+
+	my ($dn, $ds, $index) = (0, 0, -1);
+
+	if ($test eq "2") {
+		my (@p, @b, @f);
+		my $i = 0;
+		while ($i < @$lines) {
+			if ($lines->[$i++] =~ m/^site\s+class\s+/) {
+				$index = $i - 1;
+				last;
+			}
+		}
+		while ($i < @$lines) {
+			my $line = $lines->[$i++];
+			if ($line =~ m/^proportion\s+([\d\.]+)\s+([\d\.]+)\s+([\d\.]+)\s+([\d\.]+)/) {
+				@p = ($1, $2, $3, $4);
+			}
+			elsif ($line =~ m/^background\s+w\s+([\d\.]+)\s+([\d\.]+)\s+([\d\.]+)\s+([\d\.]+)/) {
+				@b = ($1, $2, $3, $4);
+			}
+			elsif ($line =~ m/^foreground\s+w\s+([\d\.]+)\s+([\d\.]+)\s+([\d\.]+)\s+([\d\.]+)/) {
+				@f = ($1, $2, $3, $4);
+			}
+			else {
+				last;
+			}
+		}
+		for (my $i = 0 ; $i < 4 ; $i++) {
+			$dn += $p[$i] * $b[$i];
+			$ds += $p[$i] * $f[$i];
+		}
+	}
+	elsif ($test eq "3") {
+		for (my $i = 0 ; $i < @$lines ; $i++) {
+			if ($lines->[$i] =~ m/^w \(dN\/dS\)[^:]+:\s+([\d\.]+)\s+([\d\.]+)/) {
+				($dn, $ds) = ($1, $2);
+				$index = $i;
+				last;
+			}
+		}
+	}
+
+	return ($dn, $ds, $index);
+}
 
 #
 # ------------------------------------------------------------------------------
@@ -718,14 +768,14 @@ sub generateCodeml {
 	}
 
 	# Calculate model 2 and 3
-	for my $t ("2", "3") {
-		next if (!($tests =~ m/$t/));
+	for my $test ("2", "3") {
+		next if (!($tests =~ m/$test/));
 
-		print RESULT ($t == 2 ? "\n# Test 2 - branch-site specific" : "\n# Test 3 - branch specific"), "\n\n";
+		print RESULT ($test == 2 ? "\n# Test 2 - branch-site specific" : "\n# Test 3 - branch specific"), "\n\n";
 
 		# Get folders for "without or with" fixomega
-		my @dirs0 = <$ctlname-${t}0-*>;
-		my @dirs1 = <$ctlname-${t}1-*>;
+		my @dirs0 = <$ctlname-${test}0-*>;
+		my @dirs1 = <$ctlname-${test}1-*>;
 
 		# Loop over all directories (trees)
 		for (my $treeno = 0 ; $treeno < @dirs0 ; $treeno++) {
@@ -796,6 +846,21 @@ sub generateCodeml {
 				}
 
 				printf RESULT ("%s\t%f\t%d\t%f\t%f\n", "Test_" . ($treeno + 1), $dltr, $dn, $p, $p / @dirs0);
+
+				# Calculate background/foreground values
+
+				my ($dn, $ds, $index) = getOmega($test, \@lines0);
+				if ($test eq "2") {
+					printf RESULT ("Tree_%d_site_classes\n", $treeno + 1);
+					for (my $i = 0 ; $i < 4 ; $i++) {
+						my $line = $lines0[$index + $i];
+						$line =~ s/site class/site_class/;
+						$line =~ s/d w/d_w/;
+						$line =~ s/[ ]+/\t/g;
+						print RESULT $line, "\n";
+					}
+				}
+				printf RESULT ("Tree_%d_branch_omega\t%f\t%f\n", $treeno + 1, $dn, $ds);
 			}
 		}
 	}
@@ -968,6 +1033,132 @@ sub isOmega {
 	return 0;
 }
 
+# ------------------------------------------------------------------------------
+# Constants for svg
+# ------------------------------------------------------------------------------
+
+my $XMLNS = join(
+	" ",
+	(
+		qq(xmlns="http://www.w3.org/2000/svg"), qq(xmlns:svg="http://www.w3.org/2000/svg"),
+		qq(xmlns:xlink="http://www.w3.org/1999/xlink")
+	)
+);
+my $FONT     = qq(font-family="monospace" font-size="12" font-weight="normal");
+my $LINETYPE = qq(fill-opacity:1.0; stroke-linecap:square; stroke-opacity:1.0; stroke-width:1);
+my $RECTTYPE = qq(fill-opacity:1.0; stroke-opacity:1.0; stroke-width:1);
+
+#
+# ------------------------------------------------------------------------------
+# Create the omega / svg file
+# ------------------------------------------------------------------------------
+#
+sub generateOmegaGraph {
+	my ($file, $data, $title, $s, $hs) = @_;
+
+	sub __createSVG {
+		my ($width, $height, @elems) = @_;
+		return qq(<svg height="$height" width="$width" $XMLNS>\n) . join("\n", @elems) . qq(\n</svg>);
+	}
+
+	sub __createText {
+		my ($x, $y, $text, $color) = @_;
+		return qq(<text fill="$color" $FONT x="$x" y="$y">$text</text>);
+	}
+
+	sub __createTextUp {
+		my ($x, $y, $text, $color) = @_;
+		$x += 11;
+		return qq(<text fill="$color" $FONT transform="translate($x,$y) rotate(-90)">$text</text>);
+	}
+
+	sub __createLine {
+		my ($x1, $y1, $x2, $y2, $color) = @_;
+		return qq(<line style="fill:$color; stroke:$color; $LINETYPE" x1="$x1" y1="$y1" x2="$x2" y2="$y2"/>);
+	}
+
+	sub __createRectangle {
+		my ($x, $y, $width, $height, $color) = @_;
+		return qq(<rect style="fill:$color; stroke:$color; $RECTTYPE" width="$width" height="$height" x="$x" y="$y"/>);
+	}
+
+	sub __getY {
+		my ($value, $height, $unit, $toppaddng) = @_;
+		return int($height - $unit * $value + $toppaddng);
+	}
+
+	# Graph settings
+	my $leftoffset    = 30;
+	my $toppadding    = 60;
+	my $leftpadding   = 10;
+	my $rightpadding  = 40;
+	my $bottompadding = 10;
+	my $cellwith      = 40;
+	my $height        = 200;
+
+	# The maximum omega value
+	my $max = 3.0;
+
+	my %colors = (
+		white   => "rgb(255,255,255)",
+		black   => "rgb(32,32,32)",
+		gray    => "rgb(192,192,192)",
+		icolor  => "rgb(64,64,64)",
+		scolor  => "rgb(32,32,192)",
+		hscolor => "rgb(192,32,32)"
+	);
+
+	my $unit;
+
+	for my $d (@$data) {
+		$toppadding = 160 if ($d->[3] >= $max);
+	}
+
+	$unit = $height / $max;
+
+	# Width of the graph - not of the whole image
+	my $width = $leftoffset + (@$data * $cellwith);
+	$width = 400 if ($width < 400);
+
+	my @elems;
+	push(@elems, __createText($leftpadding + $leftoffset, 15, $title, $colors{black}));
+	push(@elems, __createLine($leftpadding, $toppadding, $leftpadding,     $toppadding + $height, $colors{black}));
+	push(@elems, __createLine($leftpadding, $toppadding + $height, $width, $toppadding + $height, $colors{black}));
+	push(@elems, __createTextUp($leftpadding - 5, $toppadding - 5, "Omega", $colors{black}));
+	push(@elems, __createText($leftpadding + $width - 4, $toppadding + $height, "Time", $colors{black}));
+
+	# Draw omega coordinates
+	my $n = "1" . "0" x (length(sprintf("%d", $max)) - 1);
+	for (my $o = 0 ; $o < $max ; $o += $n) {
+		my $y = __getY($o, $height, $unit, $toppadding);
+		push(@elems, __createText($leftpadding + 5, $y - 5, sprintf("%d", $o), $colors{black}));
+		push(@elems, __createLine($leftpadding, $y, $width, $y, $colors{gray}));
+	}
+
+	# Draw values
+	my $x = $leftoffset;
+	for my $d (reverse @$data) {
+		my $color =
+			$d->[4] >= $s
+		  ? $colors{icolor}
+		  : ($d->[4] <= $hs ? $colors{hscolor} : $colors{scolor});
+		my $y = __getY($d->[3] < $max ? $d->[3] : $max, $height, $unit, $toppadding) - 10;
+		push(@elems, __createTextUp($x - 2,      $y - 5,  "[#]",   $color));
+		push(@elems, __createTextUp($x - 2,      $y - 30, $d->[0], $color));
+		push(@elems, __createTextUp($x - 2 + 12, $y - 5,  "[w]",   $color));
+		push(@elems, __createTextUp($x - 2 + 12, $y - 30, $d->[3], $color));
+		push(@elems, __createTextUp($x - 2 + 24, $y - 5,  "[p]",   $color));
+		push(@elems, __createTextUp($x - 2 + 24, $y - 30, $d->[4], $color));
+		push(@elems, __createRectangle($x, $y - 2, $cellwith - 4, 4, $color));
+		$x += $cellwith;
+	}
+
+	open(F, ">", $file) || die;
+	binmode F;
+	print F __createSVG($width + $leftpadding + $rightpadding, $toppadding + $height + 30 + $bottompadding, @elems);
+	close F;
+}
+
 #
 # ------------------------------------------------------------------------------
 # Prints the species / omega based data and create a graph
@@ -985,17 +1176,17 @@ sub generateOmega {
 	my @a = readFile("$ctlname.ctl");
 	for (my $i = 0 ; !$otree && $i < @a ; $i++) {
 		if ($a[$i] =~ m/treefile\s*=\s*([^\s]+)/) {
-			$otree = (readFile($1))[0];
+			$otree = join("", readFile($1));
 		}
 	}
 
 	my $diff = 0;
 	my $hs   = 0;
-	my @rows;
+	my @data;
 
 	# Loop over all directories (trees)
 	for (my $treeno = 0 ; $treeno < @dirs0 ; $treeno++) {
-		my ($mtree, $dn, $ds);
+		my $mtree;
 
 		# Extract marked tree
 		my @a = readFile("$dirs0[$treeno]/codeml.ctl");
@@ -1010,42 +1201,7 @@ sub generateOmega {
 			my @lines0 = readFile("$dirs0[$treeno]/mlc");
 			my @lines1 = readFile("$dirs1[$treeno]/mlc");
 
-			# Calculate background/foreground values
-			if ($test eq "2") {
-				my (@p, @b, @f);
-				my $i = 0;
-				while ($i < @lines0) {
-					last if ($lines0[$i++] =~ m/^site\s+class\s+/);
-				}
-				while ($i < @lines0) {
-					my $line = $lines0[$i++];
-					if ($line =~ m/^proportion\s+([\d\.]+)\s+([\d\.]+)\s+([\d\.]+)\s+([\d\.]+)/) {
-						@p = ($1, $2, $3, $4);
-					}
-					elsif ($line =~ m/^background\s+w\s+([\d\.]+)\s+([\d\.]+)\s+([\d\.]+)\s+([\d\.]+)/) {
-						@b = ($1, $2, $3, $4);
-					}
-					elsif ($line =~ m/^background\s+w\s+([\d\.]+)\s+([\d\.]+)\s+([\d\.]+)\s+([\d\.]+)/) {
-						@f = ($1, $2, $3, $4);
-					}
-					else {
-						last;
-					}
-				}
-				($dn, $ds) = (0, 0);
-				for (my $i = 0 ; $i < 4 ; $i++) {
-					$dn += $p[$i] * $b[$i];
-					$ds += $p[$i] * $f[$i];
-				}
-			}
-			elsif ($test eq "3") {
-				for (my $i = 0 ; $i < @lines0 ; $i++) {
-					if ($lines0[$i] =~ m/^w \(dN\/dS\)[^:]+:\s+([\d\.]+)\s+([\d\.]+)/) {
-						($dn, $ds) = ($1, $2);
-						last;
-					}
-				}
-			}
+			my ($dn, $ds) = getOmega($test, \@lines0);
 
 			my ($np0, $lnl0);
 			my ($np1, $lnl1);
@@ -1071,21 +1227,21 @@ sub generateOmega {
 
 			$hs = $significance / @dirs0;
 
-			push(@rows, sprintf("%d\t%s\t%f\t%f\t%f", @rows + 1, $mtree, $dn, $ds, $p));
+			push(@data, [@data + 1, $mtree, $dn, $ds, $p]);
 
 			# Change next " #1" in otree by values
-			my $s = ":$ds/$p/" . @rows;
+			my $s = " #" . @data;
 			substr($otree, index($mtree, " #1") + $diff, 0) = $s;
 			$diff += length($s);
 		}
 	}
 
-	if (!@rows) {
+	if (!@data) {
 		message("I", "No omega values - files *.result.omega.* are not generated");
 		return;
 	}
 
-	my $omegafile = "$ctlname.result.omega${test}";
+	my $omegafile = "$ctlname.result.omega_" . ($test == 2 ? "BS" : "B");
 	open(F, ">", $omegafile);
 	printf F ("# Significance: %f\n", $significance);
 	printf F (
@@ -1093,18 +1249,15 @@ sub generateOmega {
 		$hs
 	);
 	print F "# Number\tTree\tdN/dS_background\tdN/dS_foreground\tP-Value\n\n";
-	for my $row (@rows) {
-		print F $row, "\n";
+	for my $d (@data) {
+		print F join("\t", @$d), "\n";
 	}
 	close(F);
 
+	writeFile("$omegafile.tree", $otree);
+
 	my $title = ($test == 2 ? "Foreground" : "Background") . " Omega Graph";
-	my ($treefile, $graphfile) = ("$omegafile.tree", "$omegafile.svg");
-	writeFile($treefile, $otree);
-	my $command = qq(paPAML_graph.pl -t "$title" -o $omegafile -g $graphfile -s1 $significance -s2 $hs);
-	if (system($command) != 0) {
-		message("E", "Cannot generate omega graph for test ${test} - paPAML_graph.pl had an error!");
-	}
+	generateOmegaGraph("$omegafile.svg", \@data, $title, $significance, $hs);
 }
 
 #
@@ -1415,6 +1568,7 @@ sub loop {
 	}
 
 	message(">", "Waiting to finish remaining runs...");
+	sleep(2);
 	while (1) {
 		my @pids = getSubpids();
 		last if (!@pids);
