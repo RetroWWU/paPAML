@@ -2,6 +2,7 @@
 
 #
 # ==============================================================================
+# [2023-06-21] v2.4: Print corrected p-value in test header only
 # [2023-03-28] v2.3: Add omega calculation
 # [2023-01-20] v2.2: add *.result_aa.fa file for amino acids
 # [2023-01-16] v2.1: correct a type and test 3 results
@@ -168,7 +169,7 @@ USAGE
     paPAML.pl -i [-f controlfiles]
     paPAML.pl -c
 
-VERSION 2.3
+VERSION 2.4
 
 WHERE
     runs         - the number of parallel runs
@@ -771,11 +772,14 @@ sub generateCodeml {
 	for my $test ("2", "3") {
 		next if (!($tests =~ m/$test/));
 
-		print RESULT ($test == 2 ? "\n# Test 2 - branch-site specific" : "\n# Test 3 - branch specific"), "\n\n";
-
 		# Get folders for "without or with" fixomega
 		my @dirs0 = <$ctlname-${test}0-*>;
 		my @dirs1 = <$ctlname-${test}1-*>;
+
+		# Write header if no data
+		if (!@dirs0) {
+			print RESULT ($test == 2 ? "\n# Test 2 - branch-site specific" : "\n# Test 3 - branch specific"), "\n\n";
+		}
 
 		# Loop over all directories (trees)
 		for (my $treeno = 0 ; $treeno < @dirs0 ; $treeno++) {
@@ -828,6 +832,15 @@ sub generateCodeml {
 			my $dn   = abs($np1 - $np0);
 			my $p    = Statistics::Distributions::chisqrprob($dn, $dltr);
 
+			# Write header if first tree
+			if ($treeno == 0) {
+				my $s = sprintf("p-value_significance_limit: %f / corrected_for_multiple_testing: %f",
+					$significance, $significance / @dirs0);
+				print RESULT (
+					$test == 2 ? "\n# Test 2 - branch-site specific / $s" : "\n# Test 3 - branch specific / $s"),
+				  "\n\n";
+			}
+
 			if ($p < $significance) {
 				printTree($dirs0[$treeno], $treeno);
 
@@ -845,7 +858,7 @@ sub generateCodeml {
 					map {$codondata->{$_->[0] - 1}->{"2"} .= sprintf(",Tree_%d:%0.3f", ($treeno + 1), 1 - $_->[2])} @b1;
 				}
 
-				printf RESULT ("%s\t%f\t%d\t%f\t%f\n", "Test_" . ($treeno + 1), $dltr, $dn, $p, $p / @dirs0);
+				printf RESULT ("%s\t%f\t%d\t%f\n", "Test_" . ($treeno + 1), $dltr, $dn, $p);
 
 				# Calculate background/foreground values
 
