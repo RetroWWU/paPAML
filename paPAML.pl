@@ -744,6 +744,7 @@ sub generateCodeml {
 |  (13 H and 76 P). 13 H was only discovered by the less stringent and more sensitive  |
 |  model 7-8 comparison.                                                               |
 +--------------------------------------------------------------------------------------+
+
 EOS
 
 		my @dirs  = <$ctlname-10-*>;
@@ -926,6 +927,7 @@ EOS
 |  overall w-value difficult to indicate due to the upper limit of 999 being reached   |
 |  in the site classes).                                                               |
 +--------------------------------------------------------------------------------------+
+
 EOS
 				}
 				else {
@@ -958,6 +960,7 @@ EOS
 |  for multiple testing (new P-boundary = 0.0125), the w-value  (P = 0.043569) is no   |
 |  longer significant.                                                                 |
 +--------------------------------------------------------------------------------------+
+
 EOS
 				}
 			}
@@ -1032,6 +1035,7 @@ sub generateHyphy {
 |  significant negative selection (P = 0.0068) and one site with significant           |
 |  positive selection (P = 0.0288) across the phylogeny.                               |                               |
 +--------------------------------------------------------------------------------------+
+
 EOS
 
 	my $lineno = 0;
