@@ -929,7 +929,7 @@ EOS
 EOS
 				}
 				else {
-					print <<EOS;
+					print RESULT <<EOS;
 +--------------------------------------------------------------------------------------+
 |  Results Test 3 – branch model  –  EXAMPLE                                           |
 |                                                                                      |
