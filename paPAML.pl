@@ -697,26 +697,54 @@ sub generateCodeml {
 # Codeml test results
 # -----------------------------------------------------------------------------
 
-# Reference
-#
-# (tree);
-# Model_n    np lnl dNdS
-# Tree_n_O   np lnl
-# Tree_n_M   np lnl
-# Test_1_2   abs(2*(lnl?Model_2-lnl?Model_1)) abs(np?Model_2-np?Model_1) pvalue
-# Test_7_8   abs(2*(lnl?Model_8-lnl?Model_2)) abs(np?Model_8-np?Model_7) pvalue
-# Test_n     abs(2*(lnl?Tree_n_O-lnl?Tree_n_M)) abs(np?Tree_n_O-np?Tree_n_M) pvalue
-# Bayes_n
-# nr aminoacid probability [postmean += stddev]
-#
-# n - number
-# ? - value referenced to the following parameter
-
 );
 
 	# Calculate model 1
 	if ($tests =~ m/1/) {
 		print RESULT qq(# Test 1 - site specific\n\n);
+		print RESULT <<EOS;
++--------------------------------------------------------------------------------------+
+|  Results Test 1 – site models – EXAMPLE                                              |
+|                                                                                      |
+|  p-value_significance_limit: 0.05                                                    |
+|                                                                                      |
+|  Model_1_M0              23                      -1549.837332     0.6728             |
+|  Model_2_M               25                      -1545.728933     1.0040             |
+|  Model_7_M0              23                      -1549.873442     0.7000             |
+|  Model_8_M               25                      -1545.726929     1.0033             |
+|                                                                                      |
+|  Site models (1,2,7,8)   np (degrees of freedom)  lnl-values      w (omega)          |
+|                                                                   -values (dn/ds)    |
+|                                                                                      |
+|  Four site models, model 1 and 7 allow for neutral and negative selection            |
+|  (the null models), while model 2 and 8 also allow for positive selection            |
+|  and are compared with their counterparts (2 with 1 and 8 with 7).                   |
+|                                                                                      |
+|  Test_1_2                8.216798                2                0.016434           |
+|  Test_7_8                8.293026                2                0.015819           |
+|  CHI-square              difference lnl x2       Difference np    P-value            |
+|                                                                                      |
+|  The Model 1-2 comparison is usually more stringent than the model 7-8 comparison    |
+|  and therefore not as sensitive.                                                     |
+|                                                                                      |
+|  Bayes_1_2                                BEB                                        |
+|  76                       P               0.959*           4.837      +/- 2.203      |
+|  Bayes_7_8                                                                           |
+|  13                       H               0.972*           4.025      +/- 1.882      |
+|  76                       P               0.978*           4.053      +/- 1.874      |
+|  Codon number             AA (reference)  P-values sign.   w-values   SD of w-values |
+|                                            *P > 95%                                  |
+|                                           **P > 99%                                  |
+|  Sites under significant positive selection found with Bayes Empirical Bayes (BEB)   |
+|  analysis, both for model 1-2 and model 7-8 comparison.                              |
+|                                                                                      |
+|  Conclusions: In this example, the site model comparisons show a significant         |
+|  difference from the null models (P-values =  0.016434 and 0.015819, respectively)   |
+|  and found two sites under significant positive selection across the phylogeny       |
+|  (13 H and 76 P). 13 H was only discovered by the less stringent and more sensitive  |
+|  model 7-8 comparison.                                                               |
++--------------------------------------------------------------------------------------+
+EOS
 
 		my @dirs  = <$ctlname-10-*>;
 		my @lines = readFile("$dirs[0]/mlc");
@@ -839,6 +867,99 @@ sub generateCodeml {
 				print RESULT (
 					$test == 2 ? "\n# Test 2 - branch-site specific / $s" : "\n# Test 3 - branch specific / $s"),
 				  "\n\n";
+				if ($test == 2) {
+					print RESULT <<EOS;
++--------------------------------------------------------------------------------------+
+|  Results Test 2 – branch site model – EXAMPLE                                        |
+|                                                                                      |
+|  p-value_significance_limit: 0.05                                                    |
+|  p-value_significance_limit (corrected_for_multiple_testing): 0.00455                |
+|  correction: 0.05/11 (11 = number of foreground branches/tested trees                |
+|                                                                                      |
+|  Tree_3 ((Hsa_Human,Hla_Gibbon) #1,((Cgu/Can_colobus, Pne_langur),Mmu_rhesus),       |
+|  (Ssc_squirrelM,Cja_marmorset));                                                     |
+|                                                                                      |
+|  analyzed tree with foreground branch labeled #1                                     |
+|                                                                                      |
+|  Tree_3_M                16                      -898.514392                         |
+|  omega free (0 < w)      np (degrees of freedom) lnl value                           |
+|                                                                                      |
+|  Bayes_3_M                                                                           |
+|   79                     L                        0.963*                             |
+|  122                     R                        0.956*                             |
+|                                                                                      |
+|  codon number            amino acid (reference)   P-value and significance           |
+|                                                   of selection on site               |
+|                                                    *P > 95%                          |
+|                                                   **P > 99%                          |
+|                                                                                      |
+|  Sites under significant positive sel. found with Bayes Empirical Bayes analysis     |
+|                                                                                      |
+|  Tree_3_M0               15                      -901.979225                         |
+|  Omega fixed (w=1)       np (degrees of freedom) lnl value                           |
+|                                                                                      |
+|  Test_3                  6.929666                 1                 0.000706         |
+|  CHI-square              difference lnl x2        difference np     P-value          |
+|                                                                                      |
+|  Tree_3_site_classes                                                                 |
+|  Site class              0          1          2a          2b                        |
+|  Proportion              0.39899    0.47265    0.05875     0.06960                   |
+|  Background_w            0.00000    1.00000    0.00000     1.00000                   |
+|  Foreground_w            0.00000    1.00000  999.00000   999.00000                   |
+|                                                                                      |
+|  Different site classes for background (B) and foreground (F) branch(es) with        |
+|  corresponding w-values                                                              |
+|                                                                                      |
+|  Site class nomenclature     0: 0 < w < 1     for B and F                            |
+|                              1: w = 1         for B and F                            |
+|                             2a: 0 < w < 1     for B and w ≧ 1 for F                  |
+|                             2b: w = 1         for B and w ≧ 1 for F                  |
+|                                                                                      |
+|  Proportion of overall sites of specific site classes (combined equal to 1)          |
+|                                                                                      |
+|  Tree_3_branch_omega     0.542250                 128.694300                         |
+|  w-values of different   overall w-value of B     Overall w-value of F               |
+|  branch types overall                                                                |
+|                                                                                      |
+|  Conclusions: Significant positive selection (P = 0.043569) and specific sites       |
+|  under positive selection (79 L and 122 R) found in the foreground branch (exact     |
+|  overall w-value difficult to indicate due to the upper limit of 999 being reached   |
+|  in the site classes).                                                               |
++--------------------------------------------------------------------------------------+
+EOS
+				}
+				else {
+					print <<EOS;
++--------------------------------------------------------------------------------------+
+|  Results Test 3 – branch model  –  EXAMPLE                                           |
+|                                                                                      |
+|  p-value_significance_limit: 0.05                                                    |
+|  p-value_significance_limit (corrected_for_multiple_testing): 0.0125                 |
+|  correction: 0.05/4 (4 = number of foreground branches/tested trees)                 |
+|                                                                                      |
+|  Tree_3 (pon_abe,(pan_tro,hom_sap #1));                                              |
+|                                                                                      |
+|  analyzed tree with foreground branch labeled #1                                     |
+|                                                                                      |
+|  Tree_3_M                7                      -1882.816024                         |
+|  Tree_3_M0               6                      -1884.852625                         |
+|  omega free (0 < w)      np (degrees of freedom) lnl value                           |
+|  omega fixed to (w = 1)  np (degrees of freedom) lnl value                           |                                                                              |
+|                                                                                      |
+|  Test_3          4.073202            1              0.043569                         |
+|  CHI-square      difference lnl x2   difference np  P-value                          |
+|                                                                                      |
+|  Tree_3_branch_omega     0.008030               1.015790                             |
+|  w-values of different   w-value                w-value                              |
+|  branch types            background             foreground branch                    |
+|                                                                                      |
+|  Conclusions: In this example, the w-value of #1 is significantly different          |
+|  (P = 0.043569) than the background w. Nevertheless, after applying the correction   |
+|  for multiple testing (new P-boundary = 0.0125), the w-value  (P = 0.043569) is no   |
+|  longer significant.                                                                 |
++--------------------------------------------------------------------------------------+
+EOS
+				}
 			}
 
 			if ($p < $significance) {
@@ -894,11 +1015,24 @@ sub generateHyphy {
 # Test 4 - Hyphy FEL
 # -----------------------------------------------------------------------------
 
-# Reference
-#
-# codon-number "+"|"-" pvalue
-
 );
+	print RESULT <<EOS;
++--------------------------------------------------------------------------------------+
+|  Results Test 4 – HyPhy FEL – EXAMPLE                                                |
+|                                                                                      |
+|  P-value_significance_limit: 0.05                                                    |
+|                                                                                      |
+|  codon number (reference)   "+"/"-"                      P-value                     |                                                                            |
+|  66                            -                         0.0068                      |
+|  76                            +                         0.028                       |
+|                                positive selection(+)                                 |
+|                                negative selection(-)                                 |
+|                                                                                      |
+|  Conclusions: In this example, the HyPhy FEL algorithm detected one site with        |
+|  significant negative selection (P = 0.0068) and one site with significant           |
+|  positive selection (P = 0.0288) across the phylogeny.                               |                               |
++--------------------------------------------------------------------------------------+
+EOS
 
 	my $lineno = 0;
 	my @lines  = readFile("$ctlname-hyphy/out");
