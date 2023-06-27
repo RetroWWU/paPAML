@@ -765,7 +765,7 @@ EOS
 			}
 		}
 
-		my @ms = (1, 2, 7, 8);
+		my @ms = ("1_M0", "2_M", "7_M0", "8_M");
 		$index = 0;
 		for my $x (@a) {
 			printf RESULT ("%s\t%s\n", "Model_" . $ms[$index++], join("\t", @$x));
@@ -946,7 +946,7 @@ EOS
 |  Tree_3_M                7                      -1882.816024                         |
 |  Tree_3_M0               6                      -1884.852625                         |
 |  omega free (0 < w)      np (degrees of freedom) lnl value                           |
-|  omega fixed to (w = 1)  np (degrees of freedom) lnl value                           |                                                                              |
+|  omega fixed to (w = 1)  np (degrees of freedom) lnl value                           |
 |                                                                                      |
 |  Test_3          4.073202            1              0.043569                         |
 |  CHI-square      difference lnl x2   difference np  P-value                          |
@@ -968,14 +968,14 @@ EOS
 			if ($p < $significance) {
 				printTree($dirs0[$treeno], $treeno);
 
-				printf RESULT ("%s\t%d\t%s\n", "Tree_" . ($treeno + 1) . "_O", $np0, $lnl0);
+				printf RESULT ("%s\t%d\t%s\n", "Tree_" . ($treeno + 1) . "_M", $np0, $lnl0);
 				if (@b0) {
 					printf RESULT ("Bayes_%d_O\n", $treeno + 1);
 					print RESULT join("\n", map {sprintf(("%d\t%s\t%s", $_->[0], $_->[1], $_->[2]))} @b0), "\n";
 					map {$codondata->{$_->[0] - 1}->{"2"} .= sprintf(",Tree_%d:%0.3f", ($treeno + 1), 1 - $_->[2])} @b0;
 				}
 
-				printf RESULT ("%s\t%d\t%s\n", "Tree_" . ($treeno + 1) . "_M", $np1, $lnl1);
+				printf RESULT ("%s\t%d\t%s\n", "Tree_" . ($treeno + 1) . "_M0", $np1, $lnl1);
 				if (@b1) {
 					printf RESULT ("Bayes_%d_M\n", $treeno + 1);
 					print RESULT join("\n", map {sprintf(("%d\t%s\t%s", $_->[0], $_->[1], $_->[2]))} @b1), "\n";
@@ -1025,7 +1025,7 @@ sub generateHyphy {
 |                                                                                      |
 |  P-value_significance_limit: 0.05                                                    |
 |                                                                                      |
-|  codon number (reference)   "+"/"-"                      P-value                     |                                                                            |
+|  codon number (reference)   "+"/"-"                      P-value                     |
 |  66                            -                         0.0068                      |
 |  76                            +                         0.028                       |
 |                                positive selection(+)                                 |
@@ -1033,7 +1033,7 @@ sub generateHyphy {
 |                                                                                      |
 |  Conclusions: In this example, the HyPhy FEL algorithm detected one site with        |
 |  significant negative selection (P = 0.0068) and one site with significant           |
-|  positive selection (P = 0.0288) across the phylogeny.                               |                               |
+|  positive selection (P = 0.0288) across the phylogeny.                               |
 +--------------------------------------------------------------------------------------+
 
 EOS
