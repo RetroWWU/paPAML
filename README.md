@@ -8,7 +8,7 @@ paPAML simplifies, amplifies, and accelerates selection analyses via parallel pr
 
 ## Remarks
 
-The tested installation is working with paml version 4.9j and hyphy version 2.5.42. Actually there are problems reported with paml 4.10.  The reason is that parsing a newick tree and the corresponding fasta sequences produces an error.  But paml 4.9j worked fine.
+The tested installation is working with paml version 4.9j, 4.10.7 and hyphy version 2.5.42. Actually there are problems reported with some versions of paml "branch" 4.10.*, but the newest version 4.10.7 is working fine (again) :-)  The reason is that parsing a newick tree and the corresponding fasta sequences produces an error.  By the way: the "old" version of paml 4.9j is working fine, too.
 
 ## FreeBSD (Version 13.*)
 
