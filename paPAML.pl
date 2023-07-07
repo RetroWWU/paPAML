@@ -142,6 +142,7 @@ my %params = (
 	"alpha"        => "0",
 	"cleandata"    => "1",
 	"clock"        => "0",
+	"estFreq"      => "0",
 	"fix_alpha"    => "1",
 	"fix_blength"  => "-1",
 	"fix_rho"      => "1",
@@ -149,6 +150,7 @@ my %params = (
 	"icode"        => "0",
 	"method"       => "0",
 	"ndata"        => "1",
+	"omega"        => "1",
 	"outfile"      => "mlc",
 	"rho"          => "0",
 	"runmode"      => "0",
@@ -630,6 +632,16 @@ sub printErrors {
 		}
 	}
 }
+
+#
+# ------------------------------------------------------------------------------
+# Returns the text/comment inside braces
+# ------------------------------------------------------------------------------
+#
+sub enbrace {
+	return join("\n", map {$_ = sprintf("|  %-82s  |", $_); $_} @_);
+}
+
 #
 # ------------------------------------------------------------------------------
 # Returns omega values dn, ds ad the index of the first matching line
@@ -692,19 +704,20 @@ sub generateCodeml {
 
 	my ($bayes12, $bayes78, $codondata) = ({}, {}, {});
 
-	print RESULT qq(
-# -----------------------------------------------------------------------------
-# Codeml test results
-# -----------------------------------------------------------------------------
-
-);
+	print RESULT <<EOS;
++--------------------------------------------------------------------------------------+
+|  Codeml test results                                                                 |
++--------------------------------------------------------------------------------------+
+EOS
 
 	# Calculate model 1
 	if ($tests =~ m/1/) {
-		print RESULT qq(# Test 1 - site specific\n\n);
 		print RESULT <<EOS;
+
 +--------------------------------------------------------------------------------------+
-|  Results Test 1 – site models – EXAMPLE                                              |
+|  Results Test 1 – site models                                                        |
++--------------------------------------------------------------------------------------+
+|  EXAMPLE                                                                             |
 |                                                                                      |
 |  p-value_significance_limit: 0.05                                                    |
 |                                                                                      |
@@ -810,6 +823,9 @@ EOS
 			print RESULT ($test == 2 ? "\n# Test 2 - branch-site specific" : "\n# Test 3 - branch specific"), "\n\n";
 		}
 
+		# If there is a result and header is missing
+		my $headerprinted = 0;
+
 		# Loop over all directories (trees)
 		for (my $treeno = 0 ; $treeno < @dirs0 ; $treeno++) {
 			my @lines0 = readFile("$dirs0[$treeno]/mlc");
@@ -862,16 +878,21 @@ EOS
 			my $p    = Statistics::Distributions::chisqrprob($dn, $dltr);
 
 			# Write header if first tree
-			if ($treeno == 0) {
-				my $s = sprintf("p-value_significance_limit: %f / corrected_for_multiple_testing: %f",
-					$significance, $significance / @dirs0);
-				print RESULT (
-					$test == 2 ? "\n# Test 2 - branch-site specific / $s" : "\n# Test 3 - branch specific / $s"),
-				  "\n\n";
+			if (!$headerprinted) {
+				my $s = enbrace(
+					sprintf(
+						"p-value_significance_limit: %f / corrected_for_multiple_testing: %f",
+						$significance, $significance / @dirs0
+					)
+				);
 				if ($test == 2) {
 					print RESULT <<EOS;
+
 +--------------------------------------------------------------------------------------+
-|  Results Test 2 – branch site model – EXAMPLE                                        |
+|  Results Test 2 - branch-site specific                                               |
+$s
++--------------------------------------------------------------------------------------+
+|  EXAMPLE                                                                             |
 |                                                                                      |
 |  p-value_significance_limit: 0.05                                                    |
 |  p-value_significance_limit (corrected_for_multiple_testing): 0.00455                |
@@ -932,8 +953,12 @@ EOS
 				}
 				else {
 					print RESULT <<EOS;
+
 +--------------------------------------------------------------------------------------+
-|  Results Test 3 – branch model  –  EXAMPLE                                           |
+|  Results Test 3 – branch model - branch specific                                     |
+$s
++--------------------------------------------------------------------------------------+
+|  EXAMPLE                                                                             |
 |                                                                                      |
 |  p-value_significance_limit: 0.05                                                    |
 |  p-value_significance_limit (corrected_for_multiple_testing): 0.0125                 |
@@ -963,6 +988,7 @@ EOS
 
 EOS
 				}
+				$headerprinted = 1;
 			}
 
 			if ($p < $significance) {
@@ -1013,15 +1039,12 @@ EOS
 sub generateHyphy {
 	my ($ctlname, $codondata) = @_;
 
-	print RESULT qq(
-# -----------------------------------------------------------------------------
-# Test 4 - Hyphy FEL
-# -----------------------------------------------------------------------------
-
-);
 	print RESULT <<EOS;
+
 +--------------------------------------------------------------------------------------+
-|  Results Test 4 – HyPhy FEL – EXAMPLE                                                |
+|  Results Test 4 – HyPhy FEL                                                          |
++--------------------------------------------------------------------------------------+
+|  EXAMPLE                                                                             |
 |                                                                                      |
 |  P-value_significance_limit: 0.05                                                    |
 |                                                                                      |
@@ -1077,16 +1100,16 @@ sub generateSequence {
 	$seq =~ s/[\-\s]//g;
 	$seq = uc($seq);
 
-	print RESULT qq(
-# -----------------------------------------------------------------------------
-# Sequence overview of site specific results
-# -----------------------------------------------------------------------------
+	print RESULT <<EOS;
 
-# Reference
-#
-# Codon_number\tCodon\tAmino_acid\tT1_Bayes_1_2\tT1_Bayes_7_8\tT2_Bayes\tHyphy_negative\tHyphy_positive
++--------------------------------------------------------------------------------------+
+|  Sequence overview of site specific results                                          |
++--------------------------------------------------------------------------------------+
+|  Codon   Codon  Amino  T1_Bayes_1_2  T1_Bayes_7_8  T2_Bayes  Hyphy     Hyphy         |
+|  number         acid                                         negative  positive      |
++--------------------------------------------------------------------------------------+
 
-);
+EOS
 
 	my ($b12,  $b78,  $b,  $hn,  $hp);
 	my ($b12_, $b78_, $b_, $hn_, $hp_);
@@ -1205,7 +1228,7 @@ my $RECTTYPE = qq(fill-opacity:1.0; stroke-opacity:1.0; stroke-width:1);
 # ------------------------------------------------------------------------------
 #
 sub generateOmegaGraph {
-	my ($file, $data, $title, $s, $hs) = @_;
+	my ($file, $data, $title, $s, $hs, $otree) = @_;
 
 	sub __createSVG {
 		my ($width, $height, @elems) = @_;
@@ -1248,7 +1271,7 @@ sub generateOmegaGraph {
 	my $height        = 200;
 
 	# The maximum omega value
-	my $max = 3.0;
+	my $max = 2.0;
 
 	my %colors = (
 		white   => "rgb(255,255,255)",
@@ -1269,7 +1292,7 @@ sub generateOmegaGraph {
 
 	# Width of the graph - not of the whole image
 	my $width = $leftoffset + (@$data * $cellwith);
-	$width = 400 if ($width < 400);
+	$width = 600 if ($width < 600);
 
 	my @elems;
 	push(@elems, __createText($leftpadding + $leftoffset, 15, $title, $colors{black}));
@@ -1304,9 +1327,45 @@ sub generateOmegaGraph {
 		$x += $cellwith;
 	}
 
+	# Draw tree
+	my @ts;
+	my $y = $toppadding + $height + 8;
+	{
+		my $index = 0;
+		while ($otree) {
+			my $c = substr($otree, $index, 1);
+			if ($c eq "") {
+				push(@ts, $otree);
+				last;
+			}
+			if ($c eq ",") {
+				if ($index > 80) {
+					push(@ts, substr($otree, 0, $index + 1));
+					$otree = substr($otree, $index + 1);
+					$index = 0;
+				}
+			}
+			$index++;
+		}
+		for my $t (@ts) {
+			$y += 16;
+			push(@elems, __createText($leftpadding, $y, $t, $colors{black}));
+		}
+	}
+	$y += 24;
+	push(@elems, __createText($leftpadding, $y, sprintf("Significance: %f\n", $significance), $colors{black}));
+	$y += 16;
+	push(
+		@elems,
+		__createText(
+			$leftpadding, $y, sprintf("High Significance (p-value limit / number of tests): %f\n\n", $hs),
+			$colors{black}
+		)
+	);
+
 	open(F, ">", $file) || die;
 	binmode F;
-	print F __createSVG($width + $leftpadding + $rightpadding, $toppadding + $height + 30 + $bottompadding, @elems);
+	print F __createSVG($width + $leftpadding + $rightpadding, $y + $bottompadding, @elems);
 	close F;
 }
 
@@ -1371,10 +1430,14 @@ sub generateOmega {
 				}
 			}
 
-			next if (($np0 == $np1) || ($lnl0 == $lnl1));
-
-			my $dltr = abs(2 * ($lnl1 - $lnl0));
-			my $p    = Statistics::Distributions::chisqrprob(abs($np1 - $np0), $dltr);
+			my $p;
+			if (($np0 != $np1) && ($lnl0 != $lnl1)) {
+				my $dltr = abs(2 * ($lnl1 - $lnl0));
+				$p = Statistics::Distributions::chisqrprob(abs($np1 - $np0), $dltr);
+			}
+			else {
+				$p = 1;
+			}
 
 			$hs = $significance / @dirs0;
 
@@ -1407,8 +1470,8 @@ sub generateOmega {
 
 	writeFile("$omegafile.tree", $otree);
 
-	my $title = ($test == 2 ? "Foreground" : "Background") . " Omega Graph";
-	generateOmegaGraph("$omegafile.svg", \@data, $title, $significance, $hs);
+	my $title = "Forground Omega Graph - " . ($test == 2 ? "branch-site specific" : "branch specific");
+	generateOmegaGraph("$omegafile.svg", \@data, $title, $significance, $hs, $otree);
 }
 
 #
@@ -1444,11 +1507,16 @@ sub generate {
 		open(RESULT, ">", $resultfile);
 
 		my ($sec, $min, $hour, $mday, $mon, $year, $wday, $yday, $isdst) = localtime();
-		printf RESULT (
-			"# %04d-%02d-%02d %02d:%02d: Results for %s.ctl with tests %s and significance %f\n",
-			$year + 1900,
-			$mon + 1, $mday, $hour, $min, $ctlname, $tests, $significance
+		my $s = enbrace(
+			sprintf("%04d-%02d-%02d %02d:%02d", $year + 1900, $mon + 1, $mday, $hour, $min),
+			sprintf("Results for %s.ctl with tests %s and significance %f", $ctlname, $tests, $significance)
 		);
+		print RESULT <<EOS;
++--------------------------------------------------------------------------------------+
+$s
++--------------------------------------------------------------------------------------+
+
+EOS
 
 		my ($bayes12, $bayes78, $codondata) = generateCodeml($ctlname);
 		generateHyphy($ctlname, $codondata);
@@ -1498,9 +1566,9 @@ sub mark {
 # ------------------------------------------------------------------------------
 #
 sub extendCtl {
-	my ($ctl, $model, $nssites, $fixomega, $omega) = @_;
-	my @a = grep {!($_ =~ m/(\s+|)(model|NSsites|fix_omega|omega)\s*=/)} split(/\n/, $ctl);
-	return "model = $model\nNSsites = $nssites\nfix_omega = $fixomega\nomega = $omega\n" . join("\n", @a);
+	my ($ctl, $model, $nssites, $fixomega) = @_;
+	my @a = grep {!($_ =~ m/(\s+|)(model|NSsites|fix_omega)\s*=/)} split(/\n/, $ctl);
+	return "model = $model\nNSsites = $nssites\nfix_omega = $fixomega\n" . join("\n", @a);
 }
 
 #
@@ -1677,20 +1745,20 @@ sub loop {
 
 		# Site specific
 		if ($tests =~ m/1/) {
-			my $c = extendCtl($ctl, "0", "1 2 7 8", "0", "1");
+			my $c = extendCtl($ctl, "0", "1 2 7 8", "0");
 			my $t = $tree;
 			runCodeml($ctlname, $seqfile, $treefile, $c, $t, "10", 0);
 		}
 
 		# Branch site model with and without selection
 		if ($tests =~ m/2/) {
-			my $c = extendCtl($ctl, "2", "2", "0", "1");
+			my $c = extendCtl($ctl, "2", "2", "0");
 			my $t = $tree;
 			for (my $treeno = 0 ; $t = mark($t) ; $treeno++) {
 				runCodeml($ctlname, $seqfile, $treefile, $c, $t, "20", $treeno);
 			}
 
-			$c = extendCtl($ctl, "2", "2", "1", "1");
+			$c = extendCtl($ctl, "2", "2", "1");
 			$t = $tree;
 			for (my $treeno = 0 ; $t = mark($t) ; $treeno++) {
 				runCodeml($ctlname, $seqfile, $treefile, $c, $t, "21", $treeno);
@@ -1699,13 +1767,13 @@ sub loop {
 
 		# Branch model with and without selection
 		if ($tests =~ m/3/) {
-			my $c = extendCtl($ctl, "2", "0", "0", "1");
+			my $c = extendCtl($ctl, "2", "0", "0");
 			my $t = $tree;
 			for (my $treeno = 0 ; $t = mark($t) ; $treeno++) {
 				runCodeml($ctlname, $seqfile, $treefile, $c, $t, "30", $treeno);
 			}
 
-			$c = extendCtl($ctl, "2", "0", "1", "1");
+			$c = extendCtl($ctl, "2", "0", "1");
 			$t = $tree;
 			for (my $treeno = 0 ; $t = mark($t) ; $treeno++) {
 				runCodeml($ctlname, $seqfile, $treefile, $c, $t, "31", $treeno);
