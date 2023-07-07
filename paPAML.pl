@@ -1276,7 +1276,7 @@ sub generateOmegaGraph {
 	my %colors = (
 		white   => "rgb(255,255,255)",
 		black   => "rgb(32,32,32)",
-		gray    => "rgb(192,192,192)",
+		gray    => "rgb(128,128,128)",
 		icolor  => "rgb(64,64,64)",
 		scolor  => "rgb(32,32,192)",
 		hscolor => "rgb(192,32,32)"
@@ -1312,10 +1312,16 @@ sub generateOmegaGraph {
 	# Draw values
 	my $x = $leftoffset;
 	for my $d (reverse @$data) {
-		my $color =
-			$d->[4] >= $s
-		  ? $colors{icolor}
-		  : ($d->[4] <= $hs ? $colors{hscolor} : $colors{scolor});
+		my $color;
+		if ($d->[4] == 1) {
+			$color = $colors{gray};
+		}
+		elsif ($d->[4] >= $s) {
+			$color = $colors{icolor};
+		}
+		else {
+			$color = ($d->[4] <= $hs ? $colors{hscolor} : $colors{scolor});
+		}
 		my $y = __getY($d->[3] < $max ? $d->[3] : $max, $height, $unit, $toppadding) - 10;
 		push(@elems, __createTextUp($x - 2,      $y - 5,  "[#]",   $color));
 		push(@elems, __createTextUp($x - 2,      $y - 30, $d->[0], $color));
