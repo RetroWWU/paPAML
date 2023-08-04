@@ -167,7 +167,7 @@ sub usage {
 
 	print <<EOF;
 USAGE
-    paPAML.pl -p runs [-f controlfiles] [-t tests] [-s significance] [-o species] -d] {codemlparams}
+    paPAML.pl -p runs [-f controlfiles] [-t tests] [-s significance] [-o species] [-d] {codemlparams}
     paPAML.pl -i [-f controlfiles]
     paPAML.pl -c
 
@@ -1224,6 +1224,24 @@ my $RECTTYPE = qq(fill-opacity:1.0; stroke-opacity:1.0; stroke-width:1);
 
 #
 # ------------------------------------------------------------------------------
+# Return a float as readable string
+# ------------------------------------------------------------------------------
+#
+sub getFloat {
+	my $s;
+	if ($_[0] < 0.0001) {
+		$s = sprintf("%0.10e", $_[0]);
+		$s =~ s/0+e/e/g;
+	}
+	else {
+		$s = sprintf("%0.10f", $_[0]);
+		$s =~ s/0+$//g;
+	}
+	return $s;
+}
+
+#
+# ------------------------------------------------------------------------------
 # Create the omega / svg file
 # ------------------------------------------------------------------------------
 #
@@ -1263,7 +1281,7 @@ sub generateOmegaGraph {
 
 	# Graph settings
 	my $leftoffset    = 30;
-	my $toppadding    = 60;
+	my $toppadding    = 100;
 	my $leftpadding   = 10;
 	my $rightpadding  = 40;
 	my $bottompadding = 10;
@@ -1285,21 +1303,21 @@ sub generateOmegaGraph {
 	my $unit;
 
 	for my $d (@$data) {
-		$toppadding = 160 if ($d->[3] >= $max);
+		$toppadding = 200 if ($d->[3] >= $max);
 	}
 
 	$unit = $height / $max;
 
 	# Width of the graph - not of the whole image
 	my $width = $leftoffset + (@$data * $cellwith);
-	$width = 600 if ($width < 600);
+	$width = 650 if ($width < 650);
 
 	my @elems;
 	push(@elems, __createText($leftpadding + $leftoffset, 15, $title, $colors{black}));
 	push(@elems, __createLine($leftpadding, $toppadding, $leftpadding,     $toppadding + $height, $colors{black}));
 	push(@elems, __createLine($leftpadding, $toppadding + $height, $width, $toppadding + $height, $colors{black}));
-	push(@elems, __createTextUp($leftpadding - 5, $toppadding - 5, "Omega", $colors{black}));
-	push(@elems, __createText($leftpadding + $width - 4, $toppadding + $height, "Time", $colors{black}));
+	push(@elems, __createTextUp($leftpadding - 7, $toppadding - 5, "Omega", $colors{black}));
+	push(@elems, __createText($leftpadding + $width - 4, $toppadding + $height + 4, "Time", $colors{black}));
 
 	# Draw omega coordinates
 	my $n = "1" . "0" x (length(sprintf("%d", $max)) - 1);
@@ -1322,7 +1340,7 @@ sub generateOmegaGraph {
 		else {
 			$color = ($d->[4] <= $hs ? $colors{hscolor} : $colors{scolor});
 		}
-		my $y = __getY($d->[3] < $max ? $d->[3] : $max, $height, $unit, $toppadding) - 10;
+		my $y = __getY($d->[3] < $max ? $d->[3] : $max, $height, $unit, $toppadding);
 		push(@elems, __createTextUp($x - 2,      $y - 5,  "[#]",   $color));
 		push(@elems, __createTextUp($x - 2,      $y - 30, $d->[0], $color));
 		push(@elems, __createTextUp($x - 2 + 12, $y - 5,  "[w]",   $color));
@@ -1447,7 +1465,7 @@ sub generateOmega {
 
 			$hs = $significance / @dirs0;
 
-			push(@data, [@data + 1, $mtree, $dn, $ds, $p]);
+			push(@data, [@data + 1, $mtree, getFloat($dn), getFloat($ds), getFloat($p)]);
 
 			# Change next " #1" in otree by values
 			my $s = " #" . @data;
