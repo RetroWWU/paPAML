@@ -2,6 +2,8 @@
 
 #
 # ==============================================================================
+# [2023-12-12] v2.6: Implement -icode dependend settings
+# [2023-12-06] v2.5: SVG graphs with tree
 # [2023-06-21] v2.4: Print corrected p-value in test header only
 # [2023-03-28] v2.3: Add omega calculation
 # [2023-01-20] v2.2: add *.result_aa.fa file for amino acids
@@ -65,73 +67,137 @@ my ($ctlcount, $ctlindex);
 
 # Translate codons in amino acids
 my %aacode = (
-	TTT => "F",
-	TTC => "F",
-	TTA => "L",
-	TTG => "L",
-	TCT => "S",
-	TCC => "S",
-	TCA => "S",
-	TCG => "S",
-	TAT => "Y",
-	TAC => "Y",
-	TAA => "*",
-	TAG => "*",
-	TGT => "C",
-	TGC => "C",
-	TGA => "*",
-	TGG => "W",
-	CTT => "L",
-	CTC => "L",
-	CTA => "L",
-	CTG => "L",
-	CCT => "P",
-	CCC => "P",
-	CCA => "P",
-	CCG => "P",
-	CAT => "H",
-	CAC => "H",
-	CAA => "Q",
-	CAG => "Q",
-	CGT => "R",
-	CGC => "R",
-	CGA => "R",
-	CGG => "R",
-	ATT => "I",
-	ATC => "I",
-	ATA => "I",
-	ATG => "M",
-	ACT => "T",
-	ACC => "T",
-	ACA => "T",
-	ACG => "T",
-	AAT => "N",
-	AAC => "N",
 	AAA => "K",
+	AAC => "N",
 	AAG => "K",
-	AGT => "S",
-	AGC => "S",
+	AAT => "N",
+	ACA => "T",
+	ACC => "T",
+	ACG => "T",
+	ACT => "T",
 	AGA => "R",
+	AGC => "S",
 	AGG => "R",
-	GTT => "V",
-	GTC => "V",
-	GTA => "V",
-	GTG => "V",
-	GCT => "A",
-	GCC => "A",
-	GCA => "A",
-	GCG => "A",
-	GAT => "D",
-	GAC => "D",
+	AGT => "S",
+	ATA => "I",
+	ATC => "I",
+	ATG => "M",
+	ATT => "I",
+	CAA => "Q",
+	CAC => "H",
+	CAG => "Q",
+	CAT => "H",
+	CCA => "P",
+	CCC => "P",
+	CCG => "P",
+	CCT => "P",
+	CGA => "R",
+	CGC => "R",
+	CGG => "R",
+	CGT => "R",
+	CTA => "L",
+	CTC => "L",
+	CTG => "L",
+	CTT => "L",
 	GAA => "E",
+	GAC => "D",
 	GAG => "E",
-	GGT => "G",
-	GGC => "G",
+	GAT => "D",
+	GCA => "A",
+	GCC => "A",
+	GCG => "A",
+	GCT => "A",
 	GGA => "G",
+	GGC => "G",
 	GGG => "G",
+	GGT => "G",
+	GTA => "V",
+	GTC => "V",
+	GTG => "V",
+	GTT => "V",
+	TAA => "*",
+	TAC => "Y",
+	TAG => "*",
+	TAT => "Y",
+	TCA => "S",
+	TCC => "S",
+	TCG => "S",
+	TCT => "S",
+	TGA => "*",
+	TGC => "C",
+	TGG => "W",
+	TGT => "C",
+	TTA => "L",
+	TTC => "F",
+	TTG => "L",
+	TTT => "F",
 );
 
-# The default parameters.  They can be changed over command line
+# Mapping icode => codon => amini acids
+my %aacode2 = (
+	1 => {
+		ATA => "M",
+		TGA => "W"
+	},
+	2 => {
+		ATA => "M",
+		CTC => "*",
+		CTG => "*",
+		CTT => "*",
+		TGA => "W"
+	},
+	3 => {
+		TGA => "W"
+	},
+	4 => {
+		AGA => "S",
+		AGG => "S",
+		ATA => "M",
+		TGA => "W"
+	},
+	5 => {
+		TAA => "Q",
+		TAG => "Q"
+	},
+	6 => {
+		AAA => "N",
+		AGA => "S",
+		AGG => "S",
+		TGA => "W"
+	},
+	7 => {
+		TGA => "C"
+	},
+	8 => {
+		CTG => "S"
+	},
+	9 => {
+		AGA => "G",
+		AGG => "G",
+		ATA => "M",
+		TGA => "W"
+	},
+	10 => {
+		TAG => "Q"
+	}
+);
+
+# Mapping from codeml -icode to hyphy --code
+my %icodemap = (
+	0  => "Universal",
+	1  => "Vertebrate-mtDNA",
+	2  => "Yeast-mtDNA",
+	3  => "Mold-Protozoan-mtDNA",
+	4  => "Invertebrate-mtDNA",
+	5  => "Ciliate-Nuclear",
+	6  => "Echinoderm-mtDNA",
+	7  => "Euplotid-Nuclear",
+	8  => "Alt-Yeast-Nuclear",
+	9  => "Ascidian-mtDNA",
+	10 => "Blepharisma-Nuclear",
+);
+
+# The default codeml parameters.  They can be changed over command line
 my %params = (
 	"CodonFreq"    => "2",
 	"Malpha"       => "0",
@@ -171,7 +237,7 @@ USAGE
     paPAML.pl -i [-f controlfiles]
     paPAML.pl -c
 
-VERSION 2.4
+VERSION 2.6
 
 WHERE
     runs         - the number of parallel runs
@@ -715,7 +781,7 @@ EOS
 		print RESULT <<EOS;
 
 +--------------------------------------------------------------------------------------+
-|  Results Test 1 – site models                                                        |
+|  Results Test 1 - site models                                                        |
 +--------------------------------------------------------------------------------------+
 |  EXAMPLE                                                                             |
 |                                                                                      |
@@ -955,7 +1021,7 @@ EOS
 					print RESULT <<EOS;
 
 +--------------------------------------------------------------------------------------+
-|  Results Test 3 – branch model - branch specific                                     |
+|  Results Test 3 - branch model - branch specific                                     |
 $s
 +--------------------------------------------------------------------------------------+
 |  EXAMPLE                                                                             |
@@ -1042,7 +1108,7 @@ sub generateHyphy {
 	print RESULT <<EOS;
 
 +--------------------------------------------------------------------------------------+
-|  Results Test 4 – HyPhy FEL                                                          |
+|  Results Test 4 - HyPhy FEL                                                          |
 +--------------------------------------------------------------------------------------+
 |  EXAMPLE                                                                             |
 |                                                                                      |
@@ -1115,13 +1181,15 @@ EOS
 	my ($b12_, $b78_, $b_, $hn_, $hp_);
 
 	my $count = length($seq) / 3;
+	my $icode = $params{icode};
 
 	# Loop over codons
 	for (my $i = 0 ; $i < $count ; $i++) {
 		my $codon = substr($seq, $i * 3, 3);
 		my ($cu, $cl) = (uc($codon), lc($codon));
-		my $u = uc($codon);
-		my ($aau, $aal) = ($aacode{$u}, lc($aacode{$u}));
+		my $u  = uc($codon);
+		my $aa = $aacode2{$icode}{$u} ? $aacode2{$icode}{$u} : $aacode{$u};
+		my ($aau, $aal) = ($aa, lc($aa));
 		my $cd    = $codondata->{$i};
 		my $trees = substr($cd->{"2"}, 1);
 
@@ -1134,12 +1202,12 @@ EOS
 			"%d\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n",
 			$i + 1,
 			$codon,
-			$aacode{$codon},
-			$x_b12 ? sprintf("%0.4f", $bayes12->{$i}) : ".",
-			$x_b78 ? sprintf("%0.4f", $bayes78->{$i}) : ".",
-			$trees ? $trees                           : ".",
-			$x_hm  ? sprintf("%0.4f", $cd->{"h-"})    : ".",
-			$x_hp  ? sprintf("%0.4f", $cd->{"h+"})    : "."
+			$aacode2{$icode}{$codon} ? $aacode2{$icode}{$codon}         : $aacode{$codon},
+			$x_b12                   ? sprintf("%0.4f", $bayes12->{$i}) : ".",
+			$x_b78                   ? sprintf("%0.4f", $bayes78->{$i}) : ".",
+			$trees                   ? $trees                           : ".",
+			$x_hm                    ? sprintf("%0.4f", $cd->{"h-"})    : ".",
+			$x_hp                    ? sprintf("%0.4f", $cd->{"h+"})    : "."
 		);
 
 		$b12 .= $x_b12 ? $cu : $cl;
@@ -1211,16 +1279,30 @@ sub isOmega {
 # Constants for svg
 # ------------------------------------------------------------------------------
 
-my $XMLNS = join(
-	" ",
-	(
-		qq(xmlns="http://www.w3.org/2000/svg"), qq(xmlns:svg="http://www.w3.org/2000/svg"),
-		qq(xmlns:xlink="http://www.w3.org/1999/xlink")
-	)
-);
 my $FONT     = qq(font-family="monospace" font-size="12" font-weight="normal");
 my $LINETYPE = qq(fill-opacity:1.0; stroke-linecap:square; stroke-opacity:1.0; stroke-width:1);
 my $RECTTYPE = qq(fill-opacity:1.0; stroke-opacity:1.0; stroke-width:1);
+
+# The x offset of "layers" in the tree graph
+my $XDELTA = 40;
+
+# Graph settings
+my $LEFTOFFSET    = 30;
+my $TOPPADDING    = 100;
+my $LEFTPADDING   = 10;
+my $RIGHTPADDING  = 40;
+my $BOTTOMPADDING = 10;
+my $CELLWIDTH     = 52;
+my $HEIGHT        = 200;
+
+my %COLORS = (
+	white   => "rgb(255,255,255)",
+	black   => "rgb(32,32,32)",
+	gray    => "rgb(128,128,128)",
+	icolor  => "rgb(64,64,64)",
+	scolor  => "rgb(32,32,192)",
+	hscolor => "rgb(192,32,32)"
+);
 
 #
 # ------------------------------------------------------------------------------
@@ -1242,154 +1324,298 @@ sub getFloat {
 
 #
 # ------------------------------------------------------------------------------
+# Return the whole svg data
+# ------------------------------------------------------------------------------
+#
+sub svgCreate {
+	my ($width, $height, $elems) = @_;
+	my $xmlns =
+		qq(xmlns="http://www.w3.org/2000/svg")
+	  . qq( xmlns:svg="http://www.w3.org/2000/svg")
+	  . qq( xmlns:xlink="http://www.w3.org/1999/xlink");
+	return qq(<svg height="$height" width="$width" $xmlns>\n) . join("\n", @$elems) . qq(\n</svg>);
+}
+
+#
+# ------------------------------------------------------------------------------
+# Return an svg text element
+# ------------------------------------------------------------------------------
+#
+sub svgText {
+	my ($x, $y, $text, $color) = @_;
+	return qq(<text fill="$color" $FONT x="$x" y="$y">$text</text>);
+}
+
+#
+# ------------------------------------------------------------------------------
+# Return a vertical svg text element
+# ------------------------------------------------------------------------------
+#
+sub svgTextUp {
+	my ($x, $y, $text, $color) = @_;
+	$x += 11;
+	return qq(<text fill="$color" $FONT transform="translate($x,$y) rotate(-90)">$text</text>);
+}
+
+#
+# ------------------------------------------------------------------------------
+# Return an svg line eleemtn
+# ------------------------------------------------------------------------------
+#
+sub svgLine {
+	my ($x1, $y1, $x2, $y2, $color) = @_;
+	return qq(<line style="fill:$color; stroke:$color; $LINETYPE" x1="$x1" y1="$y1" x2="$x2" y2="$y2"/>);
+}
+
+#
+# ------------------------------------------------------------------------------
+# Return an svg rectangle element
+# ------------------------------------------------------------------------------
+#
+sub svgRectangle {
+	my ($x, $y, $width, $height, $color) = @_;
+	return qq(<rect style="fill:$color; stroke:$color; $RECTTYPE" width="$width" height="$height" x="$x" y="$y"/>);
+}
+
+#
+# ------------------------------------------------------------------------------
+# Return an svg circle element
+# ------------------------------------------------------------------------------
+#
+sub svgCircle {
+	my ($x, $y, $radius, $color) = @_;
+	return qq(<circle style="fill:$color; stroke:$color; $RECTTYPE" cx="$x" cy="$y" r="$radius"/>);
+}
+
+#
+# ------------------------------------------------------------------------------
+# Return an y coordiante
+# ------------------------------------------------------------------------------
+#
+sub svgY {
+	my ($value, $height, $unit, $toppaddng) = @_;
+	return int($height - $unit * $value + $toppaddng);
+}
+
+#
+# ------------------------------------------------------------------------------
+# Fill the y coordinate info into nodes, who do not have (that are no leaves)
+# ------------------------------------------------------------------------------
+#
+sub svgFillY {
+	my ($node) = @_;
+
+	for my $n (@{$node->{subnodes}}) {
+		svgFillY($n);
+	}
+
+	if (!$node->{y}) {
+		my $first = $node->{subnodes}->[0];
+		my $last  = $node->{subnodes}->[-1];
+		if ($first->{y} && $last->{y}) {
+			$node->{y1} = $first->{y};
+			$node->{y2} = $last->{y};
+			$node->{y}  = int(($first->{y} + $last->{y}) / 2);
+		}
+	}
+}
+
+#
+# ------------------------------------------------------------------------------
+# Fill the name/text elements in elems
+# ------------------------------------------------------------------------------
+#
+sub svgFillNames {
+	my ($node, $elems, $maxdepth) = @_;
+
+	my $x = $LEFTPADDING + ($maxdepth + 1) * $XDELTA + 4;
+
+	if ($node->{name}) {
+		my $s = $node->{name} . ($node->{marked} ? " " . $node->{marked} : "");
+		push(@$elems, svgText($x, $node->{y} + 4, $s, $COLORS{black}));
+	}
+	else {
+		map {svgFillNames($_, $elems, $maxdepth)} @{$node->{subnodes}};
+	}
+}
+
+#
+# ------------------------------------------------------------------------------
+# Fill the line elements in elems
+# ------------------------------------------------------------------------------
+#
+sub svgFillLines {
+	my ($node, $elems, $maxdepth) = @_;
+
+	return if ($node->{name});
+
+	push(@$elems, svgCircle($node->{x}, $node->{y}, 2, $COLORS{black}));
+
+	if ($node->{marked}) {
+		push(@$elems, svgText($node->{x} + 4, $node->{y} + 4, $node->{marked}, $COLORS{black}));
+	}
+	for my $n (@{$node->{subnodes}}) {
+		svgFillLines($n, $elems, $maxdepth);
+		push(@$elems, svgLine($n->{x}, $n->{y1}, $n->{x}, $n->{y2}, $COLORS{black}));
+		if ($n->{name}) {
+			my $x2 = $node->{x} + ($maxdepth - $n->{depth} + 1) * $XDELTA;
+			push(@$elems, svgLine($node->{x}, $n->{y}, $x2, $n->{y}, $COLORS{black}));
+		}
+		else {
+			my $x2 = $node->{x} + $XDELTA;
+			push(@$elems, svgLine($node->{x}, $n->{y}, $x2, $n->{y}, $COLORS{black}));
+		}
+	}
+}
+
+#
+# ------------------------------------------------------------------------------
+# Fill the tree into elems
+# ------------------------------------------------------------------------------
+#
+sub svgFillTree {
+	my ($otree, $elems, $maxdepth, $y) = @_;
+
+	my $depth   = 0;
+	my $yoffset = 16;
+	my $node    = {x => $LEFTPADDING + 2};
+
+	while ($otree =~ m/(\(|,|\)(\s+#\d+)?|[a-z][^,:\(\) ]*(\s+#\d+)?|:[^\)\(, ]+)/gi) {
+		my ($x) = $1;
+		if ($x eq "(") {
+			$depth++;
+			my $subnode = {parent => $node, x => $LEFTPADDING + $depth * $XDELTA};
+			push(@{$node->{subnodes}}, $subnode);
+			$node     = $subnode;
+			$maxdepth = $depth if ($depth > $maxdepth);
+		}
+		elsif ($x =~ m/^\)\s*(#\d+)?/) {
+			my $marked = $1;
+			$node->{marked} = $marked         if ($marked);
+			$node           = $node->{parent} if ($node->{parent});
+			$depth--;
+		}
+		elsif ($x =~ m/([a-z][^,:\(\) ]*)(\s+#\d+)?/i) {
+			my ($name, $marked) = ($1, $2);
+			my $subnode = {name => $name, x => $LEFTPADDING + $depth * $XDELTA, y => $y, depth => $depth};
+			$subnode->{marked} = $marked if ($marked);
+			push(@{$node->{subnodes}}, $subnode);
+			$y += $yoffset;
+		}
+	}
+
+	svgFillY($node);
+	svgFillNames($node, $elems, $maxdepth);
+	svgFillLines($node, $elems, $maxdepth);
+
+	return $y;
+}
+
+#
+# ------------------------------------------------------------------------------
 # Create the omega / svg file
 # ------------------------------------------------------------------------------
 #
 sub generateOmegaGraph {
-	my ($file, $data, $title, $s, $hs, $otree) = @_;
+	my ($file, $data, $title, $s, $hs, $otree, $test) = @_;
 
-	sub __createSVG {
-		my ($width, $height, @elems) = @_;
-		return qq(<svg height="$height" width="$width" $XMLNS>\n) . join("\n", @elems) . qq(\n</svg>);
-	}
-
-	sub __createText {
-		my ($x, $y, $text, $color) = @_;
-		return qq(<text fill="$color" $FONT x="$x" y="$y">$text</text>);
-	}
-
-	sub __createTextUp {
-		my ($x, $y, $text, $color) = @_;
-		$x += 11;
-		return qq(<text fill="$color" $FONT transform="translate($x,$y) rotate(-90)">$text</text>);
-	}
-
-	sub __createLine {
-		my ($x1, $y1, $x2, $y2, $color) = @_;
-		return qq(<line style="fill:$color; stroke:$color; $LINETYPE" x1="$x1" y1="$y1" x2="$x2" y2="$y2"/>);
-	}
-
-	sub __createRectangle {
-		my ($x, $y, $width, $height, $color) = @_;
-		return qq(<rect style="fill:$color; stroke:$color; $RECTTYPE" width="$width" height="$height" x="$x" y="$y"/>);
-	}
-
-	sub __getY {
-		my ($value, $height, $unit, $toppaddng) = @_;
-		return int($height - $unit * $value + $toppaddng);
-	}
-
-	# Graph settings
-	my $leftoffset    = 30;
-	my $toppadding    = 100;
-	my $leftpadding   = 10;
-	my $rightpadding  = 40;
-	my $bottompadding = 10;
-	my $cellwith      = 40;
-	my $height        = 200;
+	my $maxdepth = 0;
+	my @elems;
+	my $y;
 
 	# The maximum omega value
 	my $max = 2.0;
 
-	my %colors = (
-		white   => "rgb(255,255,255)",
-		black   => "rgb(32,32,32)",
-		gray    => "rgb(128,128,128)",
-		icolor  => "rgb(64,64,64)",
-		scolor  => "rgb(32,32,192)",
-		hscolor => "rgb(192,32,32)"
-	);
-
-	my $unit;
-
 	for my $d (@$data) {
-		$toppadding = 200 if ($d->[3] >= $max);
+		$TOPPADDING = 200 if ($d->[3] >= $max);
 	}
 
-	$unit = $height / $max;
+	my $unit = $HEIGHT / $max;
 
 	# Width of the graph - not of the whole image
-	my $width = $leftoffset + (@$data * $cellwith);
+	my $width = $LEFTOFFSET + (@$data * $CELLWIDTH);
 	$width = 650 if ($width < 650);
 
-	my @elems;
-	push(@elems, __createText($leftpadding + $leftoffset, 15, $title, $colors{black}));
-	push(@elems, __createLine($leftpadding, $toppadding, $leftpadding,     $toppadding + $height, $colors{black}));
-	push(@elems, __createLine($leftpadding, $toppadding + $height, $width, $toppadding + $height, $colors{black}));
-	push(@elems, __createTextUp($leftpadding - 7, $toppadding - 5, "Omega", $colors{black}));
-	push(@elems, __createText($leftpadding + $width - 4, $toppadding + $height + 4, "Time", $colors{black}));
+	push(@elems, svgText($LEFTPADDING + $LEFTOFFSET, 15, $title, $COLORS{black}));
+	push(@elems, svgLine($LEFTPADDING, $TOPPADDING,           $LEFTPADDING, $TOPPADDING + $HEIGHT, $COLORS{black}));
+	push(@elems, svgLine($LEFTPADDING, $TOPPADDING + $HEIGHT, $width,       $TOPPADDING + $HEIGHT, $COLORS{black}));
+	push(@elems, svgTextUp($LEFTPADDING - 7, $TOPPADDING - 5, "Omega", $COLORS{black}));
+	push(@elems, svgText($LEFTPADDING + $width - 4, $TOPPADDING + $HEIGHT + 4, "Time", $COLORS{black}));
 
 	# Draw omega coordinates
 	my $n = "1" . "0" x (length(sprintf("%d", $max)) - 1);
 	for (my $o = 0 ; $o < $max ; $o += $n) {
-		my $y = __getY($o, $height, $unit, $toppadding);
-		push(@elems, __createText($leftpadding + 5, $y - 5, sprintf("%d", $o), $colors{black}));
-		push(@elems, __createLine($leftpadding, $y, $width, $y, $colors{gray}));
+		my $y = svgY($o, $HEIGHT, $unit, $TOPPADDING);
+		push(@elems, svgText($LEFTPADDING + 5, $y - 5, sprintf("%d", $o), $COLORS{black}));
+		push(@elems, svgLine($LEFTPADDING, $y, $width, $y, $COLORS{gray}));
 	}
 
 	# Draw values
-	my $x = $leftoffset;
+	my $x = $LEFTOFFSET;
 	for my $d (reverse @$data) {
 		my $color;
-		if ($d->[4] == 1) {
-			$color = $colors{gray};
+		if ($d->[4] == 1 || $d->[3] == 999) {
+			$color = $COLORS{gray};
 		}
 		elsif ($d->[4] >= $s) {
-			$color = $colors{icolor};
+			$color = $COLORS{icolor};
 		}
 		else {
-			$color = ($d->[4] <= $hs ? $colors{hscolor} : $colors{scolor});
+			$color = ($d->[4] <= $hs ? $COLORS{hscolor} : $COLORS{scolor});
 		}
-		my $y = __getY($d->[3] < $max ? $d->[3] : $max, $height, $unit, $toppadding);
-		push(@elems, __createTextUp($x - 2,      $y - 5,  "[#]",   $color));
-		push(@elems, __createTextUp($x - 2,      $y - 30, $d->[0], $color));
-		push(@elems, __createTextUp($x - 2 + 12, $y - 5,  "[w]",   $color));
-		push(@elems, __createTextUp($x - 2 + 12, $y - 30, $d->[3], $color));
-		push(@elems, __createTextUp($x - 2 + 24, $y - 5,  "[p]",   $color));
-		push(@elems, __createTextUp($x - 2 + 24, $y - 30, $d->[4], $color));
-		push(@elems, __createRectangle($x, $y - 2, $cellwith - 4, 4, $color));
-		$x += $cellwith;
+
+		# Foreground/background relationship
+		my $fb;
+		if ($test != 2) {
+			$fb = "F&gt;B" if ($d->[3] > $d->[2]);
+			$fb = "F=B"    if ($d->[3] == $d->[2]);
+			$fb = "F&lt;B" if ($d->[3] < $d->[2]);
+		}
+
+		my $y = svgY($d->[3] < $max ? $d->[3] : $max, $HEIGHT, $unit, $TOPPADDING);
+		push(@elems, svgTextUp($x - 2,      $y - 5,  "[#]",   $color));
+		push(@elems, svgTextUp($x - 2,      $y - 30, $d->[0], $color));
+		push(@elems, svgTextUp($x - 2 + 12, $y - 5,  "[w]",   $color));
+		push(@elems, svgTextUp($x - 2 + 12, $y - 30, $d->[3], $color));
+		push(@elems, svgTextUp($x - 2 + 24, $y - 5,  "[p]",   $color));
+		push(@elems, svgTextUp($x - 2 + 24, $y - 30, $d->[4], $color));
+		if ($test != 2) {
+			push(@elems, svgTextUp($x - 2 + 36, $y - 5,  "[d]", $color));
+			push(@elems, svgTextUp($x - 2 + 36, $y - 30, $fb,   $color));
+		}
+		push(@elems, svgRectangle($x, $y - 2, $CELLWIDTH - ($test == 2 ? 12 : 0) - 4, 4, $color));
+		$x += $CELLWIDTH;
 	}
 
-	# Draw tree
-	my @ts;
-	my $y = $toppadding + $height + 8;
-	{
-		my $index = 0;
-		while ($otree) {
-			my $c = substr($otree, $index, 1);
-			if ($c eq "") {
-				push(@ts, $otree);
-				last;
-			}
-			if ($c eq ",") {
-				if ($index > 80) {
-					push(@ts, substr($otree, 0, $index + 1));
-					$otree = substr($otree, $index + 1);
-					$index = 0;
-				}
-			}
-			$index++;
-		}
-		for my $t (@ts) {
-			$y += 16;
-			push(@elems, __createText($leftpadding, $y, $t, $colors{black}));
-		}
-	}
-	$y += 24;
-	push(@elems, __createText($leftpadding, $y, sprintf("Significance: %f\n", $significance), $colors{black}));
-	$y += 16;
-	push(
-		@elems,
-		__createText(
-			$leftpadding, $y, sprintf("High Significance (p-value limit / number of tests): %f\n\n", $hs),
-			$colors{black}
-		)
+	$y = $TOPPADDING + $HEIGHT + 20;
+	$s = sprintf("Significance: %f\n", $significance);
+	$s .= sprintf(" / High Significance (p-value limit / number of tests): %f\n\n", $hs);
+	push(@elems, svgText($LEFTPADDING, $y, $s, $COLORS{black}));
+
+	$y += 4;
+	my @a = (
+		"Color - Red: Significant with multiple testing correction",
+		"        Blue: Significant with original p-value limit (0.05)",
+		"        Black: Not significant",
+		"        Grey: Not significant and nonsensical data points (w = 999 or p = 1)",
+		"#: Number of foreground branch starting with target species",
+		"w: Omega value of foreground branch",
+		"p: p-value of branch model comparison (foreground branch (F) against background branches (B))"
 	);
+	push(@a, "d: Direction of selection change (F&lt;B: towards neg. selection, F&gt;B: towards pos. selection)")
+	  if ($test != 2);
+
+	for my $s (@a) {
+		$y += 16;
+		push(@elems, svgText($LEFTPADDING, $y, $s, $COLORS{gray}));
+	}
+
+	$y += 20;
+	$y = svgFillTree($otree, \@elems, $maxdepth, $y);
 
 	open(F, ">", $file) || die;
 	binmode F;
-	print F __createSVG($width + $leftpadding + $rightpadding, $y + $bottompadding, @elems);
+	print F svgCreate($width + $LEFTPADDING + $RIGHTPADDING, $y + $BOTTOMPADDING, \@elems);
 	close F;
 }
 
@@ -1495,7 +1721,7 @@ sub generateOmega {
 	writeFile("$omegafile.tree", $otree);
 
 	my $title = "Forground Omega Graph - " . ($test == 2 ? "branch-site specific" : "branch specific");
-	generateOmegaGraph("$omegafile.svg", \@data, $title, $significance, $hs, $otree);
+	generateOmegaGraph("$omegafile.svg", \@data, $title, $significance, $hs, $otree, $test);
 }
 
 #
@@ -1649,7 +1875,15 @@ sub runHyphy {
 	symlink("../$alignfile", $alignfile);
 	symlink("../$treefile",  $treefile);
 
-	my $command = "../$hyphypgm fel --pvalue $significance --alignment $alignfile --tree $treefile >out 2>/dev/null";
+	my $code = $icodemap{$params{icode}};
+	if (!$code) {
+		message("E", "Codon usage table is not implemented in codeml and/or HyPhy FEL");
+		return;
+	}
+	$code = "--code $code" if ($code);
+
+	my $command =
+	  "../$hyphypgm fel $code --pvalue $significance --alignment $alignfile --tree $treefile >out 2>/dev/null";
 	writeFile("RUN", "($command; if [ \$? -eq 0 ]; then touch DONE; else touch ERROR; fi)&");
 	system("sh RUN paPAML $subdir");
 
