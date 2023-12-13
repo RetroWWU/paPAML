@@ -1,3 +1,7 @@
+**2023-12-13**
+
+(1) add tree to svg graphs and (2) make -icode work with different amino acids
+
 **2023-01-20**
 
 add *.result_aa.fa file for amino acids
