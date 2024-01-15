@@ -2,6 +2,7 @@
 
 #
 # ==============================================================================
+# [2023-01-11] v2.7: add -o all
 # [2023-12-12] v2.6: Implement -icode dependend settings
 # [2023-12-06] v2.5: SVG graphs with tree
 # [2023-06-21] v2.4: Print corrected p-value in test header only
@@ -48,7 +49,7 @@ my $significance = 0.05;
 my $para         = 0;
 my $tests        = "123h";
 my $debug        = 0;
-my $species;
+my $omega;
 
 my ($info, $clean);
 
@@ -233,11 +234,11 @@ sub usage {
 
 	print <<EOF;
 USAGE
-    paPAML.pl -p runs [-f controlfiles] [-t tests] [-s significance] [-o species] [-d] {codemlparams}
+    paPAML.pl -p runs [-f controlfiles] [-t tests] [-s significance] [-o omega] [-d] {codemlparams}
     paPAML.pl -i [-f controlfiles]
     paPAML.pl -c
 
-VERSION 2.6
+VERSION 2.7
 
 WHERE
     runs         - the number of parallel runs
@@ -251,16 +252,14 @@ WHERE
     significance - the maximum p value to print marked trees.  Used for
                    printing bayes values and in hyphy call
                    (default: $significance)
-    species      - the species where the omega values are calculated
+    omega        - a single species or a species list like "hom,sap,xyz" where
+                   the omega values are calculated or "all" for all species
     -d           - the generated result directories are kept and not deleted
     -i           - info about your runs
     -c           - clean all temporary folders
     codemlparams - additional parameters for the ctl file, if not provided
                    the default parameters will be used.
                    (example: -Mgene 9 -rho 34)
-
-NOTE
-    The -o (species) option is under development and actually not usable!
 
 DEFAULT CODEML-PARAMETERS
 $p
@@ -497,7 +496,7 @@ sub getParams {
 			}
 		}
 		elsif ($p eq "-o") {
-			$species = $ARGV[$i++ + 1];
+			$omega = $ARGV[$i++ + 1];
 			$tests .= "3" if (!($tests =~ m/3/));
 		}
 		elsif ($p eq "-d") {
@@ -1246,7 +1245,7 @@ EOS
 # ------------------------------------------------------------------------------
 #
 sub isOmega {
-	my ($tree) = @_;
+	my ($tree, $species) = @_;
 
 	# Species and #1 direct together
 	if ($tree =~ m/[^A-Za-z0-9\_\-]$species #1/) {
@@ -1508,7 +1507,7 @@ sub svgFillTree {
 	svgFillNames($node, $elems, $maxdepth);
 	svgFillLines($node, $elems, $maxdepth);
 
-	return $y;
+	return ($y, $maxdepth * $XDELTA + 200);
 }
 
 #
@@ -1519,7 +1518,6 @@ sub svgFillTree {
 sub generateOmegaGraph {
 	my ($file, $data, $title, $s, $hs, $otree, $test) = @_;
 
-	my $maxdepth = 0;
 	my @elems;
 	my $y;
 
@@ -1610,12 +1608,12 @@ sub generateOmegaGraph {
 		push(@elems, svgText($LEFTPADDING, $y, $s, $COLORS{gray}));
 	}
 
-	$y += 20;
-	$y = svgFillTree($otree, \@elems, $maxdepth, $y);
+	my ($h, $w) = svgFillTree($otree, \@elems, 0, $y + 20);
+	$width = $w if ($w > $width);
 
 	open(F, ">", $file) || die;
 	binmode F;
-	print F svgCreate($width + $LEFTPADDING + $RIGHTPADDING, $y + $BOTTOMPADDING, \@elems);
+	print F svgCreate($width + $LEFTPADDING + $RIGHTPADDING + 60, $h + $BOTTOMPADDING, \@elems);
 	close F;
 }
 
@@ -1627,11 +1625,14 @@ sub generateOmegaGraph {
 sub generateOmega {
 	my ($ctlname, $test) = @_;
 
+	my $dir = "$ctlname.result.omega";
+	mkdir($dir) if (!-d $dir);
+
 	# Get folders without fixomega
 	my @dirs0 = <$ctlname-${test}0-*>;
 	my @dirs1 = <$ctlname-${test}1-*>;
 
-	# Omega tree
+	# Read omega tree
 	my $otree;
 	my @a = readFile("$ctlname.ctl");
 	for (my $i = 0 ; !$otree && $i < @a ; $i++) {
@@ -1640,88 +1641,129 @@ sub generateOmega {
 		}
 	}
 
-	my $diff = 0;
-	my $hs   = 0;
-	my @data;
+	# Get all species from the omega parameter
+	my @specs;
+	if ($omega eq "all") {
+		while ($otree =~ m/([a-z].*?)[^a-z0-9\_\-]/gi) {
+			push(@specs, $1);
+		}
+	}
+	else {
+		@specs = split(",", $omega);
+	}
 
-	# Loop over all directories (trees)
+	# Extract marked tree and values.  Do it before the loop over species,
+	# to avoid uneccessary runtime
+
+	my @mtrees;
+	my @values = ();
+
 	for (my $treeno = 0 ; $treeno < @dirs0 ; $treeno++) {
 		my $mtree;
-
-		# Extract marked tree
 		my @a = readFile("$dirs0[$treeno]/codeml.ctl");
-		for (my $i = 0 ; !$mtree && $i < @a ; $i++) {
+		for (my $i = 0 ; $i < @a ; $i++) {
 			if ($a[$i] =~ m/treefile\s*=\s*([^\s]+)/) {
 				$mtree = (readFile("$dirs0[$treeno]/$1"))[1];
+				last;
 			}
 		}
 
-		# Check and get omega values
-		if (isOmega($mtree)) {
-			my @lines0 = readFile("$dirs0[$treeno]/mlc");
-			my @lines1 = readFile("$dirs1[$treeno]/mlc");
+		my @lines0 = readFile("$dirs0[$treeno]/mlc");
+		my @lines1 = readFile("$dirs1[$treeno]/mlc");
 
-			my ($dn, $ds) = getOmega($test, \@lines0);
+		my ($dn, $ds) = getOmega($test, \@lines0);
 
-			my ($np0, $lnl0);
-			my ($np1, $lnl1);
+		my ($np0, $lnl0);
+		my ($np1, $lnl1);
 
-			# Get np and lnl values
-			for my $line (@lines0) {
-				if ($line =~ m/lnL\(.*?np:\s*(\d+)\):\s*([\d\.\-]+)/) {
-					($np0, $lnl0) = ($1, $2);
-					last;
-				}
+		# Get np and lnl values
+		for my $line (@lines0) {
+			if ($line =~ m/lnL\(.*?np:\s*(\d+)\):\s*([\d\.\-]+)/) {
+				($np0, $lnl0) = ($1, $2);
+				last;
 			}
-			for my $line (@lines1) {
-				if ($line =~ m/lnL\(.*?np:\s*(\d+)\):\s*([\d\.\-]+)/) {
-					($np1, $lnl1) = ($1, $2);
-					last;
-				}
-			}
-
-			my $p;
-			if (($np0 != $np1) && ($lnl0 != $lnl1)) {
-				my $dltr = abs(2 * ($lnl1 - $lnl0));
-				$p = Statistics::Distributions::chisqrprob(abs($np1 - $np0), $dltr);
-			}
-			else {
-				$p = 1;
-			}
-
-			$hs = $significance / @dirs0;
-
-			push(@data, [@data + 1, $mtree, getFloat($dn), getFloat($ds), getFloat($p)]);
-
-			# Change next " #1" in otree by values
-			my $s = " #" . @data;
-			substr($otree, index($mtree, " #1") + $diff, 0) = $s;
-			$diff += length($s);
 		}
+		for my $line (@lines1) {
+			if ($line =~ m/lnL\(.*?np:\s*(\d+)\):\s*([\d\.\-]+)/) {
+				($np1, $lnl1) = ($1, $2);
+				last;
+			}
+		}
+
+		my $p;
+		if (($np0 != $np1) && ($lnl0 != $lnl1)) {
+			my $dltr = abs(2 * ($lnl1 - $lnl0));
+			$p = Statistics::Distributions::chisqrprob(abs($np1 - $np0), $dltr);
+		}
+		else {
+			$p = 1;
+		}
+
+		push(@values, [getFloat($dn), getFloat($ds), getFloat($p)]);
+		push(@mtrees, $mtree);
 	}
 
-	if (!@data) {
-		message("I", "No omega values - files *.result.omega.* are not generated");
-		return;
+	# High significance
+	my $hs = $significance / @dirs0;
+
+	# Error species
+	my %errspecs;
+
+	for my $species (@specs) {
+		my $diff = 0;
+		my $ot   = $otree;
+		my @data = ();
+
+		for (my $i = 0 ; $i < @mtrees ; $i++) {
+			my $mtree = $mtrees[$i];
+
+			# Check and get omega values
+			if (isOmega($mtree, $species)) {
+				my $v = $values[$i];
+				push(@data, [@data + 1, $mtree, $v->[0], $v->[1], $v->[2]]);
+
+				# Change next " #1" in otree by values
+				my $s = " #" . @data;
+				substr($ot, index($mtree, " #1") + $diff, 0) = $s;
+				$diff += length($s);
+			}
+		}
+
+		if (!@data) {
+			$errspecs{$species} = 1;
+			next;
+		}
+
+		my $omegafile = "$dir/${species}." . ($test == 2 ? "BS" : "B");
+		open(F, ">", $omegafile);
+		printf F ("# Significance: %f\n", $significance);
+		printf F (
+			"# High Significance (corrected for multiple testing via p-value limit divided by number of tests): %f\n\n",
+			$hs
+		);
+		print F "# Number\tTree\tdN/dS_background\tdN/dS_foreground\tP-Value\n\n";
+
+		for my $d (@data) {
+			print F join("\t", @$d), "\n";
+		}
+		close(F);
+
+		writeFile("$omegafile.tree", $ot);
+
+		my $title = "Forground Omega Graph - " . ($test == 2 ? "branch-site specific" : "branch specific");
+		generateOmegaGraph("$omegafile.svg", \@data, $title, $significance, $hs, $ot, $test);
 	}
 
-	my $omegafile = "$ctlname.result.omega_" . ($test == 2 ? "BS" : "B");
-	open(F, ">", $omegafile);
-	printf F ("# Significance: %f\n", $significance);
-	printf F (
-		"# High Significance (corrected for multiple testing via p-value limit divided by number of tests): %f\n\n",
-		$hs
-	);
-	print F "# Number\tTree\tdN/dS_background\tdN/dS_foreground\tP-Value\n\n";
-	for my $d (@data) {
-		print F join("\t", @$d), "\n";
+	if (%errspecs) {
+		message(
+			"I",
+			sprintf(
+				"Following omega %s species have no data or are invalid: %s",
+				($test == 2 ? "branch-site specific" : "branch specific"),
+				join(",", sort keys %errspecs)
+			)
+		);
 	}
-	close(F);
-
-	writeFile("$omegafile.tree", $otree);
-
-	my $title = "Forground Omega Graph - " . ($test == 2 ? "branch-site specific" : "branch specific");
-	generateOmegaGraph("$omegafile.svg", \@data, $title, $significance, $hs, $otree, $test);
 }
 
 #
@@ -1774,7 +1816,7 @@ EOS
 
 		close(RESULT);
 
-		if ($species) {
+		if ($omega) {
 			generateOmega($ctlname, "2");
 			generateOmega($ctlname, "3");
 		}
