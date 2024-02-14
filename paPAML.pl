@@ -2,6 +2,7 @@
 
 #
 # ==============================================================================
+# [2024-02-13] v2.8: add logging file
 # [2023-01-11] v2.7: add -o all
 # [2023-12-12] v2.6: Implement -icode dependend settings
 # [2023-12-06] v2.5: SVG graphs with tree
@@ -38,6 +39,9 @@ use Proc::ProcessTable;
 use Statistics::Distributions;
 
 my $RUNTIMEFILE = "runtime";
+
+# The logfile handle;
+my $logfile;
 
 # The tag/extension for the links of running codeml, hyphy by special name
 my $tag       = time;
@@ -238,7 +242,7 @@ USAGE
     paPAML.pl -i [-f controlfiles]
     paPAML.pl -c
 
-VERSION 2.7
+VERSION 2.8
 
 WHERE
     runs         - the number of parallel runs
@@ -363,12 +367,31 @@ DESCRIPTION
 
     If a *.result file exists for a *.ctl file, the run(s) will be
     skipped if it is started again.
+    
+    Additionally a logfile called paPAML-yyyy-mm-dd-hh-mm-ss.log is
+    created where the logging will be written
 EOF
 	exit(0);
 }
 
 if (!@ARGV) {
 	usage();
+}
+
+# ------------------------------------------------------------------------
+# Open and close the logfile
+# ------------------------------------------------------------------------
+
+{
+	my ($sec, $min, $hour, $mday, $mon, $year) = localtime(time);
+	my $filename = sprintf("paPAML-%4d-%02d-%02d-%02d-%02d-%02d.log", $year + 1900, $mon + 1, $mday, $hour, $min, $sec);
+	open($logfile, ">", $filename);
+	print "Run is started!  See $filename for logging information...\n";
+	message("I", "The command is: " . basename($0) . " ". join(" ", @ARGV));
+}
+
+END {
+	close($logfile);
 }
 
 #
@@ -388,7 +411,7 @@ sub getDate {
 #
 sub message {
 	my ($type, $message) = @_;
-	printf("[%1s %s] %s\n", $type ? $type : "-", getDate(), $message);
+	printf $logfile ("[%1s %s] %s\n", $type ? $type : "-", getDate(), $message);
 }
 
 #
@@ -570,7 +593,7 @@ sub getSubpids {
 	my $proc = Proc::ProcessTable->new();
 	foreach my $p (@{$proc->table}) {
 		if ($p->uid == $<) {
-			if ($p->cmndline =~ m/$codemlpgm|$hyphypgm/) {
+			if ($p->cmndline =~ m/^..\/($codemlpgm|$hyphypgm)/) {
 				push(@pids, $p->pid);
 			}
 		}
@@ -1888,7 +1911,8 @@ sub runCodeml {
 	writeFile("codeml.ctl", $ctl);
 	writeFile($treefile,    " 1\n$tree\n");
 
-	writeFile("RUN", "(../$codemlpgm 2>&1 >codeml.log; if [ \$? -eq 0 ]; then touch DONE; else touch ERROR; fi)&");
+	my $command = "../$codemlpgm 2>&1 >codeml.log";
+	writeFile("RUN", "($command; if [ \$? -eq 0 ]; then touch DONE; else touch ERROR; fi)&");
 	system("sh RUN paPAML $subdir");
 
 	chdir("..");
