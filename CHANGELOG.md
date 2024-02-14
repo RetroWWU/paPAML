@@ -1,3 +1,7 @@
+**2024-02-14 - v2.8**
+
+Write logging into a file named paPAML-yyyy-mm-dd-hh-mm-ss.log
+
 **2023-12-13**
 
 (1) add tree to svg graphs and (2) make -icode work with different amino acids
