@@ -2,6 +2,7 @@
 
 #
 # ==============================================================================
+# [2024-03-07] v2.9: adjust path setting for seqfile and treefile
 # [2024-02-13] v2.8: add logging file
 # [2023-01-11] v2.7: add -o all
 # [2023-12-12] v2.6: Implement -icode dependend settings
@@ -32,6 +33,7 @@
 
 use strict;
 
+use Cwd qw(cwd realpath);
 use File::Basename;
 use File::Path  qw(rmtree);
 use File::Which qw(which);
@@ -242,7 +244,7 @@ USAGE
     paPAML.pl -i [-f controlfiles]
     paPAML.pl -c
 
-VERSION 2.8
+VERSION 2.9
 
 WHERE
     runs         - the number of parallel runs
@@ -387,7 +389,7 @@ if (!@ARGV) {
 	my $filename = sprintf("paPAML-%4d-%02d-%02d-%02d-%02d-%02d.log", $year + 1900, $mon + 1, $mday, $hour, $min, $sec);
 	open($logfile, ">", $filename);
 	print "Run is started!  See $filename for logging information...\n";
-	message("I", "The command is: " . basename($0) . " ". join(" ", @ARGV));
+	message("I", "The command is: " . basename($0) . " " . join(" ", @ARGV));
 }
 
 END {
@@ -1907,9 +1909,12 @@ sub runCodeml {
 	mkdir($subdir);
 	chdir($subdir);
 
-	symlink("../$seqfile", $seqfile);
+	my $sf = basename($seqfile);
+	my $tf = basename($treefile);
+
+	symlink($seqfile, $sf);
 	writeFile("codeml.ctl", $ctl);
-	writeFile($treefile,    " 1\n$tree\n");
+	writeFile($tf,          " 1\n$tree\n");
 
 	my $command = "../$codemlpgm 2>&1 >codeml.log";
 	writeFile("RUN", "($command; if [ \$? -eq 0 ]; then touch DONE; else touch ERROR; fi)&");
@@ -1938,8 +1943,11 @@ sub runHyphy {
 	mkdir($subdir);
 	chdir($subdir);
 
-	symlink("../$alignfile", $alignfile);
-	symlink("../$treefile",  $treefile);
+	my $af = basename($alignfile);
+	my $tf = basename($treefile);
+
+	symlink($alignfile, $af);
+	symlink($treefile,  $tf);
 
 	my $code = $icodemap{$params{icode}};
 	if (!$code) {
@@ -1948,8 +1956,7 @@ sub runHyphy {
 	}
 	$code = "--code $code" if ($code);
 
-	my $command =
-	  "../$hyphypgm fel $code --pvalue $significance --alignment $alignfile --tree $treefile >out 2>/dev/null";
+	my $command = "../$hyphypgm fel $code --pvalue $significance --alignment $af --tree $tf >out 2>/dev/null";
 	writeFile("RUN", "($command; if [ \$? -eq 0 ]; then touch DONE; else touch ERROR; fi)&");
 	system("sh RUN paPAML $subdir");
 
@@ -2006,9 +2013,11 @@ sub prepare {
 
 		if ($key eq "seqfile") {
 			$seqfile = $value;
+			$value   = basename($value);
 		}
 		elsif ($key eq "treefile") {
 			$treefile = $value;
+			$value    = basename($value);
 		}
 
 		$ctl .= "$key = $value\n";
@@ -2040,7 +2049,7 @@ sub prepare {
 		return;
 	}
 
-	return ($seqfile, $treefile, $tree, $ctl);
+	return (realpath($seqfile), realpath($treefile), $tree, $ctl);
 }
 
 #
