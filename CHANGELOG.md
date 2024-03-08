@@ -1,3 +1,7 @@
+**2024-03-07 - v2.9**
+
+adjust path setting for seqfile and treefile
+
 **2024-02-14 - v2.8**
 
 Write logging into a file named paPAML-yyyy-mm-dd-hh-mm-ss.log
