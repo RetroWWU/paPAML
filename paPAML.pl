@@ -2,6 +2,7 @@
 
 #
 # ==============================================================================
+# [2024-04-04] v2.10: add [s] in svg graphs
 # [2024-03-07] v2.9: adjust path setting for seqfile and treefile
 # [2024-02-13] v2.8: add logging file
 # [2023-01-11] v2.7: add -o all
@@ -244,7 +245,7 @@ USAGE
     paPAML.pl -i [-f controlfiles]
     paPAML.pl -c
 
-VERSION 2.9
+VERSION 2.10
 
 WHERE
     runs         - the number of parallel runs
@@ -1505,7 +1506,7 @@ sub svgFillTree {
 	my $node    = {x => $LEFTPADDING + 2};
 
 	while ($otree =~ m/(\(|,|\)(\s+#\d+)?|[a-z][^,:\(\) ]*(\s+#\d+)?|:[^\)\(, ]+)/gi) {
-		my ($x) = $1;
+		my $x = $1;
 		if ($x eq "(") {
 			$depth++;
 			my $subnode = {parent => $node, x => $LEFTPADDING + $depth * $XDELTA};
@@ -1543,8 +1544,9 @@ sub svgFillTree {
 sub generateOmegaGraph {
 	my ($file, $data, $title, $s, $hs, $otree, $test) = @_;
 
-	my @elems;
 	my $y;
+	my @elems;
+	my @bayes;
 
 	# The maximum omega value
 	my $max = 2.0;
@@ -1587,14 +1589,6 @@ sub generateOmegaGraph {
 			$color = ($d->[4] <= $hs ? $COLORS{hscolor} : $COLORS{scolor});
 		}
 
-		# Foreground/background relationship
-		my $fb;
-		if ($test != 2) {
-			$fb = "F&gt;B" if ($d->[3] > $d->[2]);
-			$fb = "F=B"    if ($d->[3] == $d->[2]);
-			$fb = "F&lt;B" if ($d->[3] < $d->[2]);
-		}
-
 		my $y = svgY($d->[3] < $max ? $d->[3] : $max, $HEIGHT, $unit, $TOPPADDING);
 		push(@elems, svgTextUp($x - 2,      $y - 5,  "[#]",   $color));
 		push(@elems, svgTextUp($x - 2,      $y - 30, $d->[0], $color));
@@ -1602,11 +1596,30 @@ sub generateOmegaGraph {
 		push(@elems, svgTextUp($x - 2 + 12, $y - 30, $d->[3], $color));
 		push(@elems, svgTextUp($x - 2 + 24, $y - 5,  "[p]",   $color));
 		push(@elems, svgTextUp($x - 2 + 24, $y - 30, $d->[4], $color));
-		if ($test != 2) {
+		if ($test == 2) {
+			push(@elems, svgTextUp($x - 2 + 36, $y - 5, "[s]", $color));
+			my @bs  = ();
+			my @bs2 = ();
+			if (@{$d->[5]} <= 3) {
+				map {$_->[2] =~ s/[^\*]*//g; push(@bs, join("", @$_))} @{$d->[5]};
+			}
+			else {
+				map {$_->[2] =~ s/[^\*]*//g; push(@bs, join("", @$_))} @{$d->[5]}[0 .. 2];
+				push(@bs, "...");
+				map {$_->[2] =~ s/[^\*]*//g; push(@bs2, join("", @$_))} @{$d->[5]};
+				push(@bayes, sprintf("[#] %d [s] %s", $d->[0], join("/", @bs2)));
+			}
+			push(@elems, svgTextUp($x - 2 + 36, $y - 30, @bs ? join("/", @bs) : "-", $color));
+		}
+		elsif ($test == 3) {
+			my $fb;
+			$fb = "F&gt;B" if ($d->[3] > $d->[2]);
+			$fb = "F=B"    if ($d->[3] == $d->[2]);
+			$fb = "F&lt;B" if ($d->[3] < $d->[2]);
 			push(@elems, svgTextUp($x - 2 + 36, $y - 5,  "[d]", $color));
 			push(@elems, svgTextUp($x - 2 + 36, $y - 30, $fb,   $color));
 		}
-		push(@elems, svgRectangle($x, $y - 2, $CELLWIDTH - ($test == 2 ? 12 : 0) - 4, 4, $color));
+		push(@elems, svgRectangle($x, $y - 2, $CELLWIDTH - 4, 4, $color));
 		$x += $CELLWIDTH;
 	}
 
@@ -1616,17 +1629,25 @@ sub generateOmegaGraph {
 	push(@elems, svgText($LEFTPADDING, $y, $s, $COLORS{black}));
 
 	$y += 4;
+	for my $b (@bayes) {
+		$y += 16;
+		push(@elems, svgText($LEFTPADDING, $y, $b, $COLORS{black}));
+	}
+
+	$y += 4;
 	my @a = (
-		"Color - Red: Significant with multiple testing correction",
-		"        Blue: Significant with original p-value limit (0.05)",
-		"        Black: Not significant",
-		"        Grey: Not significant and nonsensical data points (w = 999 or p = 1)",
+		"Red: Significant with multiple testing correction",
+		"Blue: Significant with original p-value limit (0.05)",
+		"Black: Not significant",
+		"Grey: Not significant and nonsensical data points (w=999 or p=1)",
 		"#: Number of foreground branch starting with target species",
 		"w: Omega value of foreground branch",
 		"p: p-value of branch model comparison (foreground branch (F) against background branches (B))"
 	);
 	push(@a, "d: Direction of selection change (F&lt;B: towards neg. selection, F&gt;B: towards pos. selection)")
-	  if ($test != 2);
+	  if ($test == 3);
+	push(@a, "s: Relevant site values, separated by /")
+	  if ($test == 2);
 
 	for my $s (@a) {
 		$y += 16;
@@ -1698,6 +1719,20 @@ sub generateOmega {
 
 		my ($dn, $ds) = getOmega($test, \@lines0);
 
+		my @b0;
+
+		# Get Bayes values
+		for (my $k = 0 ; $k < @lines0 ; $k++) {
+			if ($lines0[$k] =~ m/Bayes Empirical Bayes/) {
+				$k += 2;
+				while ($lines0[$k] =~ m/\d+\s+[A-Z\*]\s+/) {
+					my @a = split(/\s+/, $lines0[$k++]);
+					push(@b0, [$a[0], $a[1], $a[2]]) if ($a[2] =~ m/\*/);
+				}
+				last;
+			}
+		}
+
 		my ($np0, $lnl0);
 		my ($np1, $lnl1);
 
@@ -1724,7 +1759,7 @@ sub generateOmega {
 			$p = 1;
 		}
 
-		push(@values, [getFloat($dn), getFloat($ds), getFloat($p)]);
+		push(@values, [getFloat($dn), getFloat($ds), getFloat($p), \@b0]);
 		push(@mtrees, $mtree);
 	}
 
@@ -1745,7 +1780,7 @@ sub generateOmega {
 			# Check and get omega values
 			if (isOmega($mtree, $species)) {
 				my $v = $values[$i];
-				push(@data, [@data + 1, $mtree, $v->[0], $v->[1], $v->[2]]);
+				push(@data, [@data + 1, $mtree, $v->[0], $v->[1], $v->[2], $v->[3]]);
 
 				# Change next " #1" in otree by values
 				my $s = " #" . @data;
