@@ -1,3 +1,7 @@
+**2024-04-04 - v2.10**
+
+add site values / [s] in branch-site specific svg graphs
+
 **2024-03-07 - v2.9**
 
 adjust path setting for seqfile and treefile
