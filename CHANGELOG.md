@@ -1,3 +1,7 @@
+**2024-07-10 - v2.11**
+
+add maxtime parameter -m
+
 **2024-04-04 - v2.10**
 
 add site values / [s] in branch-site specific svg graphs
