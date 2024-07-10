@@ -2,6 +2,7 @@
 
 #
 # ==============================================================================
+# [2024-07-10] v2.11: add parameter -m (maxtime)
 # [2024-04-04] v2.10: add [s] in svg graphs
 # [2024-03-07] v2.9: adjust path setting for seqfile and treefile
 # [2024-02-13] v2.8: add logging file
@@ -43,6 +44,9 @@ use Statistics::Distributions;
 
 my $RUNTIMEFILE = "runtime";
 
+# The start time - used in combination with maxtime
+my $start = time;
+
 # The logfile handle;
 my $logfile;
 
@@ -57,6 +61,7 @@ my $para         = 0;
 my $tests        = "123h";
 my $debug        = 0;
 my $omega;
+my $maxtime;
 
 my ($info, $clean);
 
@@ -241,26 +246,31 @@ sub usage {
 
 	print <<EOF;
 USAGE
-    paPAML.pl -p runs [-f controlfiles] [-t tests] [-s significance] [-o omega] [-d] {codemlparams}
+    paPAML.pl -p runs [-f controlfiles] [-t tests] [-s significance] [-o omega]
+              [-d] [-m maxtime] {codemlparams}
     paPAML.pl -i [-f controlfiles]
     paPAML.pl -c
 
-VERSION 2.10
+VERSION 2.11
 
 WHERE
     runs         - the number of parallel runs
     controlfiles - a list of control files.  It is assumed they are named
-                   with a suffix "".ctl"!  If not given all files with
+                   with a suffix ".ctl"!  If not given all files with
                    that suffix are taken to be calculated
     tests        - the used tests (1, 2, 3 or h) to run the data against.
-                   They can be written like "1" or "12" . The order does
+                   They can be written like "1" or "12". The order does
                    not matter.
                    (default: $tests)
     significance - the maximum p value to print marked trees.  Used for
                    printing bayes values and in hyphy call
                    (default: $significance)
-    omega        - a single species or a species list like "hom,sap,xyz" where
-                   the omega values are calculated or "all" for all species
+    omega        - a single species or a comma separated species list like
+                   "hom,sap,xyz" where the omega values are calculated or
+                   "all" for all species
+    maxtime      - the maximum runtime in minutes, hours or days.  If not
+                   provided it is unlimited
+                   (examples: "12m" or "34h" or "2d")
     -d           - the generated result directories are kept and not deleted
     -i           - info about your runs
     -c           - clean all temporary folders
@@ -479,14 +489,14 @@ sub getParams {
 			$clean = 1;
 		}
 		elsif ($p eq "-p") {
-			$para = $ARGV[$i++ + 1];
+			$para = $ARGV[++$i];
 			if (!($para =~ m/^\d+$/)) {
 				message("E", "Parameter -p needs an integer value!");
 				exit(1);
 			}
 		}
 		elsif ($p eq "-f") {
-			my $s      = $ARGV[$i++ + 1];
+			my $s      = $ARGV[++$i];
 			my @a      = split(/,/, $s);
 			my @errors = ();
 			for my $x (@a) {
@@ -500,7 +510,7 @@ sub getParams {
 			@ctlnames = @a;
 		}
 		elsif ($p eq "-t") {
-			my $s = $ARGV[$i++ + 1];
+			my $s = $ARGV[++$i];
 			$tests = "";
 			$tests .= "1" if ($s =~ m/1/);
 			$tests .= "2" if ($s =~ m/2/);
@@ -515,28 +525,41 @@ sub getParams {
 			}
 		}
 		elsif ($p eq "-s") {
-			$significance = $ARGV[$i++ + 1];
+			$significance = $ARGV[++$i];
 			if (!($significance =~ m/^\d*\.?\d+$/)) {
 				message("E", "Parameter -s needs a float value!");
 				exit(1);
 			}
 		}
 		elsif ($p eq "-o") {
-			$omega = $ARGV[$i++ + 1];
+			$omega = $ARGV[++$i];
 			$tests .= "3" if (!($tests =~ m/3/));
 		}
 		elsif ($p eq "-d") {
 			$debug = 1;
 		}
+		elsif ($p eq "-m") {
+			$maxtime = $ARGV[++$i];
+			if ($maxtime =~ m/^(\d+)([mhd])$/) {
+				my ($value, $dim) = ($1, $2);
+				$maxtime = $value * 60;
+				$maxtime *= 60 if ($dim ne "m");
+				$maxtime *= 24 if ($dim eq "d");
+			}
+			else {
+				message("E", "Parameter -m is incorrect!");
+				exit(1);
+			}
+		}
 		elsif ($p eq "-runmode") {
-			my $runmode = $ARGV[$i++ + 1];
+			my $runmode = $ARGV[++$i];
 			if ($runmode != 0) {
 				message("W", "Runmode <> 0 may produce no or invalid results!");
 			}
 		}
 		else {
 			if ($p =~ m/^-/) {
-				my $value = $ARGV[$i++ + 1];
+				my $value = $ARGV[++$i];
 				$params{substr($p, 1)} = $value;
 			}
 		}
@@ -622,7 +645,7 @@ sub terminate {
 		kill(15, $pid) if (kill(0, $pid));
 	}
 
-	sleep(2);
+	sleep(5);
 
 	@pids = getSubpids();
 	for my $pid (@pids) {
@@ -633,6 +656,18 @@ sub terminate {
 	cleanSymlinks();
 
 	exit(1);
+}
+
+#
+# ------------------------------------------------------------------------------
+# Checks maximum runtime
+# ------------------------------------------------------------------------------
+#
+sub checkMaxtime {
+	if ($maxtime && $start + $maxtime < time) {
+		message("I", "Maximum runtime is over...");
+		terminate();
+	}
 }
 
 #
@@ -661,6 +696,7 @@ sub getFinnish {
 #
 sub dowait {
 	while (1) {
+		checkMaxtime();
 		if ($lasttimecheck + $lasttimeinterval < time) {
 			message("I", sprintf("Estimated time to finnish all runs: %s", getFinnish()));
 			$lasttimecheck = time;
@@ -1970,6 +2006,7 @@ sub runHyphy {
 	return if (-f "$subdir/DONE");
 
 	generate() if ((++$runindex % 10) == 0);
+
 	dowait();
 
 	$ctlindex++;
@@ -2154,9 +2191,10 @@ sub loop {
 		}
 	}
 
-	message(">", "Waiting to finish remaining runs...");
+	message(">", "Waiting for remaining runs...");
 	sleep(2);
 	while (1) {
+		checkMaxtime();
 		my @pids = getSubpids();
 		last if (!@pids);
 		sleep(10);
