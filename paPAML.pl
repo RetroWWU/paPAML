@@ -2,6 +2,7 @@
 
 #
 # ==============================================================================
+# [2025-11-11] v2.12: enhance output
 # [2024-07-10] v2.11: add parameter -m (maxtime)
 # [2024-04-04] v2.10: add [s] in svg graphs
 # [2024-03-07] v2.9: adjust path setting for seqfile and treefile
@@ -41,6 +42,8 @@ use File::Path  qw(rmtree);
 use File::Which qw(which);
 use Proc::ProcessTable;
 use Statistics::Distributions;
+
+my $VERSION = "2.12";
 
 my $RUNTIMEFILE = "runtime";
 
@@ -251,7 +254,7 @@ USAGE
     paPAML.pl -i [-f controlfiles]
     paPAML.pl -c
 
-VERSION 2.11
+VERSION $VERSION
 
 WHERE
     runs         - the number of parallel runs
@@ -710,6 +713,8 @@ sub dowait {
 #
 # ------------------------------------------------------------------------------
 # Print the tree file of a directory
+#
+# Note: the branchtype is returned!
 # ------------------------------------------------------------------------------
 #
 sub printTree {
@@ -728,11 +733,12 @@ sub printTree {
 		}
 	}
 
-	printf RESULT ("%s\t", "Tree_" . ($treeno + 1));
+	printf RESULT ("\n%s\t", "Tree_" . ($treeno + 1));
 	my @a = readFile("$dir/$filename");
-	for (my $i = 1 ; $i < @a ; $i++) {
-		print RESULT $a[$i], "\n";
-	}
+	my $t = join("", map {$_ =~ s/\n//g; $_} @a[1,]);
+	print RESULT $t, "\n";
+
+	return $t =~ m/\).?#/ ? "internal" : "terminal";
 }
 
 #
@@ -771,7 +777,7 @@ sub enbrace {
 
 #
 # ------------------------------------------------------------------------------
-# Returns omega values dn, ds ad the index of the first matching line
+# Returns omega values dn, ds and the index of the first matching line
 # ------------------------------------------------------------------------------
 #
 sub getOmega {
@@ -843,6 +849,8 @@ EOS
 
 +--------------------------------------------------------------------------------------+
 |  Results Test 1 - site models                                                        |
++--------------------------------------------------------------------------------------+
+
 +--------------------------------------------------------------------------------------+
 |  EXAMPLE                                                                             |
 |                                                                                      |
@@ -938,7 +946,7 @@ EOS
 	}
 
 	# Calculate model 2 and 3
-	for my $test ("2", "3") {
+	for my $test (2, 3) {
 		next if (!($tests =~ m/$test/));
 
 		# Get folders for "without or with" fixomega
@@ -950,74 +958,22 @@ EOS
 			print RESULT ($test == 2 ? "\n# Test 2 - branch-site specific" : "\n# Test 3 - branch specific"), "\n\n";
 		}
 
-		# If there is a result and header is missing
-		my $headerprinted = 0;
-
-		# Loop over all directories (trees)
-		for (my $treeno = 0 ; $treeno < @dirs0 ; $treeno++) {
-			my @lines0 = readFile("$dirs0[$treeno]/mlc");
-			my @lines1 = readFile("$dirs1[$treeno]/mlc");
-
-			my (@b0,  @b1);
-			my ($np0, $lnl0);
-			my ($np1, $lnl1);
-
-			# Get Bayes values
-			for (my $k = 0 ; $k < @lines0 ; $k++) {
-				if ($lines0[$k] =~ m/Bayes Empirical Bayes/) {
-					$k += 2;
-					while ($lines0[$k] =~ m/\d+\s+[A-Z\*]\s+/) {
-						my @a = split(/\s+/, $lines0[$k++]);
-						push(@b0, [$a[0], $a[1], $a[2]]) if ($a[2] =~ m/\*/);
-					}
-					last;
-				}
-			}
-			for (my $k = 0 ; $k < @lines1 ; $k++) {
-				if ($lines1[$k] =~ m/Bayes Empirical Bayes/) {
-					$k += 2;
-					while ($lines1[$k] =~ m/\d+\s+[A-Z\*]\s+/) {
-						my @a = split(/\s+/, $lines1[$k++]);
-						push(@b1, [$a[0], $a[1], $a[2]]) if ($a[2] =~ m/\*/);
-					}
-					last;
-				}
-			}
-
-			# Get np and lnl values
-			for my $line (@lines0) {
-				if ($line =~ m/lnL\(.*?np:\s*(\d+)\):\s*([0-9\.\-]+)/) {
-					($np0, $lnl0) = ($1, $2);
-					last;
-				}
-			}
-			for my $line (@lines1) {
-				if ($line =~ m/lnL\(.*?np:\s*(\d+)\):\s*([0-9\.\-]+)/) {
-					($np1, $lnl1) = ($1, $2);
-					last;
-				}
-			}
-
-			next if (($np0 == $np1) || ($lnl0 == $lnl1));
-
-			my $dltr = abs(2 * ($lnl1 - $lnl0));
-			my $dn   = abs($np1 - $np0);
-			my $p    = Statistics::Distributions::chisqrprob($dn, $dltr);
-
-			# Write header if first tree
-			if (!$headerprinted) {
-				my $s = enbrace(
-					sprintf(
-						"p-value_significance_limit: %f / corrected_for_multiple_testing: %f",
-						$significance, $significance / @dirs0
-					)
-				);
-				if ($test == 2) {
-					print RESULT <<EOS;
+		my $s1 = enbrace(
+			sprintf(
+				"p-value_significance_limit: %f / corrected_for_multiple_testing: %f",
+				$significance, $significance / @dirs0
+			)
+		);
+		my $s2 = enbrace(sprintf("Tested number of trees: %d", @dirs0 + 0));
+		if ($test == 2) {
+			print RESULT <<EOS;
 
 +--------------------------------------------------------------------------------------+
 |  Results Test 2 - branch-site specific                                               |
-$s
+$s1
+$s2
++--------------------------------------------------------------------------------------+
+
 +--------------------------------------------------------------------------------------+
 |  EXAMPLE                                                                             |
 |                                                                                      |
@@ -1070,20 +1026,23 @@ $s
 |  w-values of different   overall w-value of B     Overall w-value of F               |
 |  branch types overall                                                                |
 |                                                                                      |
-|  Conclusions: Significant positive selection (P = 0.043569) and specific sites       |
+|  Conclusions: Significant positive selection (P = 0.000706) and specific sites       |
 |  under positive selection (79 L and 122 R) found in the foreground branch (exact     |
 |  overall w-value difficult to indicate due to the upper limit of 999 being reached   |
-|  in the site classes).                                                               |
+|  in the site classes). After considering multiple testing, the new stringent         |
+|  P-value is 0.000318.                                                                |
 +--------------------------------------------------------------------------------------+
-
 EOS
-				}
-				else {
-					print RESULT <<EOS;
+		}
+		else {
+			print RESULT <<EOS;
 
 +--------------------------------------------------------------------------------------+
 |  Results Test 3 - branch model - branch specific                                     |
-$s
+$s1
+$s2
++--------------------------------------------------------------------------------------+
+
 +--------------------------------------------------------------------------------------+
 |  EXAMPLE                                                                             |
 |                                                                                      |
@@ -1112,45 +1071,120 @@ $s
 |  for multiple testing (new P-boundary = 0.0125), the w-value  (P = 0.043569) is no   |
 |  longer significant.                                                                 |
 +--------------------------------------------------------------------------------------+
-
 EOS
+		}
+
+		my @data = ();
+
+		# Loop over all directories (trees) and store data
+		for (my $treeno = 0 ; $treeno < @dirs0 ; $treeno++) {
+			my @lines0 = readFile("$dirs0[$treeno]/mlc");
+			my @lines1 = readFile("$dirs1[$treeno]/mlc");
+
+			my @b0 = ();
+			my @b1 = ();
+			my ($np0, $lnl0) = (0, 0);
+			my ($np1, $lnl1) = (0, 0);
+
+			# Get Bayes values
+			for (my $k = 0 ; $k < @lines0 ; $k++) {
+				if ($lines0[$k] =~ m/Bayes Empirical Bayes/) {
+					$k += 2;
+					while ($lines0[$k] =~ m/\d+\s+[A-Z\*]\s+/) {
+						my @a = split(/\s+/, $lines0[$k++]);
+						push(@b0, [$a[0], $a[1], $a[2]]) if ($a[2] =~ m/\*/);
+					}
+					last;
 				}
-				$headerprinted = 1;
+			}
+			for (my $k = 0 ; $k < @lines1 ; $k++) {
+				if ($lines1[$k] =~ m/Bayes Empirical Bayes/) {
+					$k += 2;
+					while ($lines1[$k] =~ m/\d+\s+[A-Z\*]\s+/) {
+						my @a = split(/\s+/, $lines1[$k++]);
+						push(@b1, [$a[0], $a[1], $a[2]]) if ($a[2] =~ m/\*/);
+					}
+					last;
+				}
 			}
 
-			if ($p < $significance) {
-				printTree($dirs0[$treeno], $treeno);
-
-				printf RESULT ("%s\t%d\t%s\n", "Tree_" . ($treeno + 1) . "_M", $np0, $lnl0);
-				if (@b0) {
-					printf RESULT ("Bayes_%d_O\n", $treeno + 1);
-					print RESULT join("\n", map {sprintf(("%d\t%s\t%s", $_->[0], $_->[1], $_->[2]))} @b0), "\n";
-					map {$codondata->{$_->[0] - 1}->{"2"} .= sprintf(",Tree_%d:%0.3f", ($treeno + 1), 1 - $_->[2])} @b0;
+			# Get np and lnl values
+			for my $line (@lines0) {
+				if ($line =~ m/lnL\(.*?np:\s*(\d+)\):\s*([0-9\.\-]+)/) {
+					($np0, $lnl0) = ($1, $2);
+					last;
 				}
-
-				printf RESULT ("%s\t%d\t%s\n", "Tree_" . ($treeno + 1) . "_M0", $np1, $lnl1);
-				if (@b1) {
-					printf RESULT ("Bayes_%d_M\n", $treeno + 1);
-					print RESULT join("\n", map {sprintf(("%d\t%s\t%s", $_->[0], $_->[1], $_->[2]))} @b1), "\n";
-					map {$codondata->{$_->[0] - 1}->{"2"} .= sprintf(",Tree_%d:%0.3f", ($treeno + 1), 1 - $_->[2])} @b1;
+			}
+			for my $line (@lines1) {
+				if ($line =~ m/lnL\(.*?np:\s*(\d+)\):\s*([0-9\.\-]+)/) {
+					($np1, $lnl1) = ($1, $2);
+					last;
 				}
+			}
 
-				printf RESULT ("%s\t%f\t%d\t%f\n", "Test_" . ($treeno + 1), $dltr, $dn, $p);
+			next if (($np0 == $np1) || ($lnl0 == $lnl1));
 
-				# Calculate background/foreground values
+			my $dltr = abs(2 * ($lnl1 - $lnl0));
+			my $dn   = abs($np1 - $np0);
+			my $p    = Statistics::Distributions::chisqrprob($dn, $dltr);
 
-				my ($dn, $ds, $index) = getOmega($test, \@lines0);
-				if ($test eq "2") {
-					printf RESULT ("Tree_%d_site_classes\n", $treeno + 1);
-					for (my $i = 0 ; $i < 4 ; $i++) {
-						my $line = $lines0[$index + $i];
-						$line =~ s/site class/site_class/;
-						$line =~ s/d w/d_w/;
-						$line =~ s/[ ]+/\t/g;
-						print RESULT $line, "\n";
+			push(@data, [$treeno, \@lines0, \@lines1, \@b0, \@b1, $np0, $lnl0, $np1, $lnl1, $dltr, $dn, $p]);
+		}
+
+		# Store codondata for later usage
+		for (my $n = 0 ; $n < @data ; $n++) {
+			my $treeno = $data[$n]->[0];
+			my $b0     = $data[$n]->[3];
+			my $b1     = $data[$n]->[4];
+			map {$codondata->{$_->[0] - 1}->{"2"} .= sprintf(",Tree_%d:%0.3f", ($treeno + 1), 1 - $_->[2])} @$b0
+			  if ($b0);
+			map {$codondata->{$_->[0] - 1}->{"2"} .= sprintf(",Tree_%d:%0.3f", ($treeno + 1), 1 - $_->[2])} @$b1
+			  if ($b1);
+		}
+
+		# Loop over significances
+		my @s = ($significance, $significance / @dirs0);
+		for (my $k = 0 ; $k < @s ; $k++) {
+			print RESULT sprintf("\n==> Tested branches with p < %f\n", $s[$k]);
+
+			for (my $n = 0 ; $n < @data ; $n++) {
+				my ($treeno, $lines0, $lines1, $b0, $b1, $np0, $lnl0, $np1, $lnl1, $dltr, $dn, $p) = @{$data[$n]};
+
+				if ($p < $s[$k]) {
+					my $branchtype = printTree($dirs0[$treeno], $treeno);
+
+					printf RESULT ("%s\t%d\t%s\n", "Tree_" . ($treeno + 1) . "_M", $np0, $lnl0);
+					if ($b0 && @$b0) {
+						printf RESULT ("Bayes_%d_O\n", $treeno + 1);
+						print RESULT join("\n", map {sprintf(("%d\t%s\t%s", $_->[0], $_->[1], $_->[2]))} @$b0), "\n";
 					}
+
+					printf RESULT ("%s\t%d\t%s\n", "Tree_" . ($treeno + 1) . "_M0", $np1, $lnl1);
+					if ($b1 && @$b1) {
+						printf RESULT ("Bayes_%d_M\n", $treeno + 1);
+						print RESULT join("\n", map {sprintf(("%d\t%s\t%s", $_->[0], $_->[1], $_->[2]))} @$b1), "\n";
+					}
+
+					printf RESULT ("%s\t%f\t%d\t%f\n", "Test_" . ($treeno + 1), $dltr, $dn, $p);
+
+					# Calculate background/foreground values
+
+					my ($dn, $ds, $index) = getOmega($test, $lines0);
+					if ($test eq "2") {
+						printf RESULT ("Tree_%d_site_classes\n", $treeno + 1);
+						for (my $i = 0 ; $i < 4 ; $i++) {
+							my $line = $lines0->[$index + $i];
+							$line =~ s/site class/site_class/;
+							$line =~ s/d w/d_w/;
+							$line =~ s/[ ]+/\t/g;
+							print RESULT $line, "\n";
+						}
+					}
+					printf RESULT ("Tree_%d_branch_omega\t%f\t%f\n", $treeno + 1, $dn, $ds);
+					printf RESULT ("Differenz_omega\t%f\n",          abs($dn - $ds));
+					printf RESULT ("Selection_pressure\t%s\n",       $dn > $ds ? "B>F" : ($dn < $ds ? "B<F" : "B=F"));
+					printf RESULT ("Branchtype\t%s\n",               $branchtype);
 				}
-				printf RESULT ("Tree_%d_branch_omega\t%f\t%f\n", $treeno + 1, $dn, $ds);
 			}
 		}
 	}
@@ -1171,6 +1205,8 @@ sub generateHyphy {
 +--------------------------------------------------------------------------------------+
 |  Results Test 4 - HyPhy FEL                                                          |
 +--------------------------------------------------------------------------------------+
+
++--------------------------------------------------------------------------------------+
 |  EXAMPLE                                                                             |
 |                                                                                      |
 |  P-value_significance_limit: 0.05                                                    |
@@ -1188,21 +1224,39 @@ sub generateHyphy {
 
 EOS
 
+	my ($countp, $countn) = (0, 0);
 	my $lineno = 0;
 	my @lines  = readFile("$ctlname-hyphy/out");
+
 	while ($lineno < @lines && !($lines[$lineno] =~ m/For partition 1 these sites/))           {$lineno++}
 	while ($lineno < @lines && !($lines[$lineno] =~ m/(\e\[[0-9;]*m(?:\e\[K)?|[\x80-\xff]+)/)) {$lineno++}
 	while ($lineno < @lines && $lines[$lineno] =~ m/(\e\[[0-9;]*m(?:\e\[K)?|[\x80-\xff]+)/) {
 		my $line = $lines[$lineno++];
+
+		# Delete blanks and escape sequences
 		$line =~ s/\s+//g;
+		$line =~ s/\x1b.*?\x6d//g;
+
 		my @a = split(/\|/, $line);
 		last if (@a < 5);
+
 		my $pos = $a[6] =~ m/Pos/;
 		$a[6] =~ m/p=(\d\.\d+)/;
 		my $value = $1;
-		$codondata->{int($a[1]) - 1}->{$pos ? "h+" : "h-"} = $value;
+
+		$codondata->{$a[1] - 1}->{$pos ? "h+" : "h-"} = $value;
 		printf RESULT ("%d\t%s\t%0.4f\n", $a[1], $pos ? "+" : "-", $value);
+
+		if ($pos) {
+			$countp++;
+		}
+		else {
+			$countn++;
+		}
 	}
+
+	printf RESULT "\n==> Positive_selection: $countp\n";
+	printf RESULT "==> Negative_selection: $countn\n";
 }
 
 #
@@ -1450,7 +1504,7 @@ sub svgCircle {
 
 #
 # ------------------------------------------------------------------------------
-# Return an y coordiante
+# Return an y coordinate
 # ------------------------------------------------------------------------------
 #
 sub svgY {
@@ -1896,7 +1950,7 @@ sub generate {
 
 		my ($sec, $min, $hour, $mday, $mon, $year, $wday, $yday, $isdst) = localtime();
 		my $s = enbrace(
-			sprintf("%04d-%02d-%02d %02d:%02d", $year + 1900, $mon + 1, $mday, $hour, $min),
+			sprintf("%04d-%02d-%02d %02d:%02d / version:%s", $year + 1900, $mon + 1, $mday, $hour, $min, $VERSION),
 			sprintf("Results for %s.ctl with tests %s and significance %f", $ctlname, $tests, $significance)
 		);
 		print RESULT <<EOS;
