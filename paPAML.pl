@@ -2,6 +2,7 @@
 
 #
 # ==============================================================================
+# [2025-12-04] v2.13: add pid file
 # [2025-11-11] v2.12: enhance output
 # [2024-07-10] v2.11: add parameter -m (maxtime)
 # [2024-04-04] v2.10: add [s] in svg graphs
@@ -43,9 +44,10 @@ use File::Which qw(which);
 use Proc::ProcessTable;
 use Statistics::Distributions;
 
-my $VERSION = "2.12";
+my $VERSION = "2.13";
 
 my $RUNTIMEFILE = "runtime";
+my $PIDFILE     = "pid";
 
 # The start time - used in combination with maxtime
 my $start = time;
@@ -355,7 +357,7 @@ DESCRIPTION
       [> 2022-09-17 11:12:11] The total runtime was 37.6 minutes
 
     To establish this the program calculates the runtime it took.  On
-    an interruption the runtime is put in the file called "runtime".
+    an interruption the runtime is put in the file called "$RUNTIMEFILE".
     On continuation this file is added to the runtime the program
     took.  This will happen even several times.  If the run finnished
     successfully this file is removed.
@@ -367,7 +369,19 @@ DESCRIPTION
 
     The program stays running, as long as your codeml or hyphy jobs
     are working.  If you press CTRL-C the program terminates and all
-    running codeml and hyphy runs are canceled.
+    running codeml and hyphy runs are canceled.  Additionally to make
+    it easier to stop a run a file called "$PIDFILE" is created, containing
+    the process id of the parent process.  If a run is finnished or
+    terminated, the "$PIDFILE" file is removed.
+
+    If you start a program (in the background) like
+
+      nohup paPAML.pl param1 param2 ... > run.log &
+
+    it will run in the background and you may close the terminal and
+    come back later.  To stop a run, enter the directory and type
+
+      kill \$(cat pid); rm pid
 
     When all runs finnished succesfully (or if in the meantime all
     needed jobs of a control file are done) there will be a *.result a
@@ -385,7 +399,7 @@ DESCRIPTION
     skipped if it is started again.
     
     Additionally a logfile called paPAML-yyyy-mm-dd-hh-mm-ss.log is
-    created where the logging will be written
+    created where the logging will be written.
 EOF
 	exit(0);
 }
@@ -407,7 +421,7 @@ if (!@ARGV) {
 }
 
 END {
-	close($logfile);
+	close($logfile) if ($logfile);
 }
 
 #
@@ -657,6 +671,8 @@ sub terminate {
 	}
 
 	cleanSymlinks();
+
+	unlink($PIDFILE) if (-f $PIDFILE);
 
 	exit(1);
 }
@@ -2327,7 +2343,9 @@ sub main {
 	symlink($codeml, $codemlpgm);
 	symlink($hyphy,  $hyphypgm);
 
+	writeFile($PIDFILE, $$);
 	loop();
+	unlink($PIDFILE) if (-f $PIDFILE);
 
 	cleanSymlinks();
 
