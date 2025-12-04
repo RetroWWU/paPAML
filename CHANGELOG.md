@@ -1,3 +1,13 @@
+**2025-12-04 - v2.13**
+
+The run writes a file called pid with the process id of paPAML.pl.  So it is easier to terminate a run - even if it would be running in the background like:
+
+    # nohup paPAML.pl param1 param2 > run.log &
+
+Terminate it (when entered the directory of choice) with
+
+    # kill (cat pid); rm pid
+
 **2025-11-21 - v2.12**
 
 enhance output by adding number of trees
