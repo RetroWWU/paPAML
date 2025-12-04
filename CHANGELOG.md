@@ -6,7 +6,7 @@ The run writes a file called pid with the process id of paPAML.pl.  So it is eas
 
 Terminate it (when entered the directory of choice) with
 
-    # kill (cat pid); rm pid
+    # kill $(cat pid); rm pid
 
 **2025-11-21 - v2.12**
 
