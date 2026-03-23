@@ -2,6 +2,7 @@
 
 #
 # ==============================================================================
+# [2026-03-23] v2.14: correct some typos
 # [2025-12-04] v2.13: add pid file
 # [2025-11-11] v2.12: enhance output
 # [2024-07-10] v2.11: add parameter -m (maxtime)
@@ -44,7 +45,9 @@ use File::Which qw(which);
 use Proc::ProcessTable;
 use Statistics::Distributions;
 
-my $VERSION = "2.13";
+$| = 1;
+
+my $VERSION = "2.14";
 
 my $RUNTIMEFILE = "runtime";
 my $PIDFILE     = "pid";
@@ -359,7 +362,7 @@ DESCRIPTION
     To establish this the program calculates the runtime it took.  On
     an interruption the runtime is put in the file called "$RUNTIMEFILE".
     On continuation this file is added to the runtime the program
-    took.  This will happen even several times.  If the run finnished
+    took.  This will happen even several times.  If the run finished
     successfully this file is removed.
 
     As already mentioned, a finished run in a subfolder will have a
@@ -371,7 +374,7 @@ DESCRIPTION
     are working.  If you press CTRL-C the program terminates and all
     running codeml and hyphy runs are canceled.  Additionally to make
     it easier to stop a run a file called "$PIDFILE" is created, containing
-    the process id of the parent process.  If a run is finnished or
+    the process id of the parent process.  If a run is finished or
     terminated, the "$PIDFILE" file is removed.
 
     If you start a program (in the background) like
@@ -383,7 +386,7 @@ DESCRIPTION
 
       kill \$(cat pid); rm pid
 
-    When all runs finnished succesfully (or if in the meantime all
+    When all runs finished succesfully (or if in the meantime all
     needed jobs of a control file are done) there will be a *.result a
     *.result.fa and a *.result_aa.fa file for every *.ctl file found
     and the generated subfolders will be removed.  You can skip the
@@ -703,7 +706,7 @@ sub getSuccess {
 # Returns the estimated runtime
 # ------------------------------------------------------------------------------
 #
-sub getFinnish {
+sub getFinish {
 	my $t = time - $starttime;
 	return sprintf("%d minutes", (($t * $ctlcount / $ctlindex) - $t) / 60 + 1);
 }
@@ -717,7 +720,7 @@ sub dowait {
 	while (1) {
 		checkMaxtime();
 		if ($lasttimecheck + $lasttimeinterval < time) {
-			message("I", sprintf("Estimated time to finnish all runs: %s", getFinnish()));
+			message("I", sprintf("Estimated time to finish all runs: %s", getFinish()));
 			$lasttimecheck = time;
 		}
 		my @pids = getSubpids();
