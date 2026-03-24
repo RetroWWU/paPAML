@@ -1164,7 +1164,10 @@ EOS
 		# Loop over significances
 		my @s = ($significance, $significance / @dirs0);
 		for (my $k = 0 ; $k < @s ; $k++) {
-			print RESULT sprintf("\n==> Tested branches with p < %f\n", $s[$k]);
+			print RESULT
+			  "+--------------------------------------------------------------------------------------",
+			  sprintf("\n==> Tested branches with p < %f\n", $s[$k]),
+			  "+--------------------------------------------------------------------------------------";
 
 			for (my $n = 0 ; $n < @data ; $n++) {
 				my ($treeno, $lines0, $lines1, $b0, $b1, $np0, $lnl0, $np1, $lnl1, $dltr, $dn, $p) = @{$data[$n]};
