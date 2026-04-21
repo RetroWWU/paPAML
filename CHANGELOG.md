@@ -1,3 +1,11 @@
+**2026-04-21 - v2.15a**
+
+The input data of sequences is checked against (1) If the seqeunces length is dividable by 3 and (2) not containing stop codons.  By default the stop codons are TAA, TAG and TGA.  This can be changed using "-seqtype 2" which sets them to AGA, AGG, TAA, TAG, TGA.
+
+The logging is not written into a file paPAML-yyyy-mm-dd-hh-mm.log anymore, by default it is written to the console.  The parameter "-l" may be used to redirect to a logging file.
+
+The deletion of symlinks to codeml and hyphy are (always) deleted on program end.
+
 **2025-12-04 - v2.13**
 
 The run writes a file called pid with the process id of paPAML.pl.  So it is easier to terminate a run - even if it would be running in the background like:
