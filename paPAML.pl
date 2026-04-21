@@ -2,6 +2,8 @@
 
 #
 # ==============================================================================
+# [2026-04-17] v2.15a: links to codeml and hyphy now *-pid, logging param -l
+# [2026-04-17] v2.15: check sequences for length%3 and remove links correctly
 # [2026-03-23] v2.14: correct some typos
 # [2025-12-04] v2.13: add pid file
 # [2025-11-11] v2.12: enhance output
@@ -47,10 +49,9 @@ use Statistics::Distributions;
 
 $| = 1;
 
-my $VERSION = "2.14";
+my $VERSION = "2.15a";
 
 my $RUNTIMEFILE = "runtime";
-my $PIDFILE     = "pid";
 
 # The start time - used in combination with maxtime
 my $start = time;
@@ -59,7 +60,7 @@ my $start = time;
 my $logfile;
 
 # The tag/extension for the links of running codeml, hyphy by special name
-my $tag       = time;
+my $tag       = $$;
 my $codemlpgm = "codeml-$tag";
 my $hyphypgm  = "hyphy-$tag";
 
@@ -244,6 +245,9 @@ my %params = (
 	"seqtype"      => "1"
 );
 
+# Default for the check of stopcodons in input sequences
+my $stopcodons = join("|", ("TAA", "TAG", "TGA"));
+
 #
 # ------------------------------------------------------------------------
 # Display usage
@@ -255,7 +259,7 @@ sub usage {
 	print <<EOF;
 USAGE
     paPAML.pl -p runs [-f controlfiles] [-t tests] [-s significance] [-o omega]
-              [-d] [-m maxtime] {codemlparams}
+              [-l logfile] [-d] [-m maxtime] {codemlparams}
     paPAML.pl -i [-f controlfiles]
     paPAML.pl -c
 
@@ -279,6 +283,7 @@ WHERE
     maxtime      - the maximum runtime in minutes, hours or days.  If not
                    provided it is unlimited
                    (examples: "12m" or "34h" or "2d")
+    logfile      - write logging into a specified file
     -d           - the generated result directories are kept and not deleted
     -i           - info about your runs
     -c           - clean all temporary folders
@@ -339,31 +344,54 @@ DESCRIPTION
     correspond together, the first for branch site mode and the second
     for the branch model, both without fixomega.
 
+  # CHECKING INPUT DATA
+
+    Before the runs are started the input (sequence) files of the runs
+    will be checked for
+
+    * all sequences have a length of a multiply by 3
+
+    * there exist stop codons in the sequences.  Usaually this means
+      to check for TAA, TAG, TGA.  This is done without the codeml
+      parameter -seqtype or if it is "1".  If -seqtype is "2", then
+      the checking is against the codons AGA, AGG, TAA, TAG, TGA.
+
+    If at least one of this checks fails, the run will be skipped and
+    an error with be logged.
+
+  # OMEGA
+
     The -o (omega) specification has a special meaning.  It uses the
     model = "2", nssites = "0", fixomega = "0" setting for codeml and
     generates an additionl output file called *.result.omega with the
-    dN/dN values of a specified species related branches.  The output is
+    dN/dN values of a specified species related branches.  The output
+    is
 
       Tree dn/ds_background dn/ds_foreground
       ((1 #1,2),3) 0.40097 0.94020
       ((1,2 #2),3) 0.12 1.2
       ...
 
+  # LOGGING
+
     The log output will have the form
 
       [T yyyy-mm-dd hh:mm:ss] Same message
 
-    where T is an indicator.  "E" is Error, "I" is additional info and
-    ">" marking a special event.  In the end you will get an info
-    about the total runetime taken like
+    where T is an indicator.  "E" is Error, "W" a warning , "I" is
+    info and ">" marking a special event.
+
+    In the end you will get an info about the total runetime taken like
 
       [> 2022-09-17 11:12:11] The total runtime was 37.6 minutes
 
     To establish this the program calculates the runtime it took.  On
-    an interruption the runtime is put in the file called "$RUNTIMEFILE".
-    On continuation this file is added to the runtime the program
-    took.  This will happen even several times.  If the run finished
-    successfully this file is removed.
+    an interruption the runtime is put in the file called
+    "$RUNTIMEFILE".  On continuation this file is added to the runtime
+    the program took.  This will happen even several times.  If the
+    run finished successfully this file is removed.
+
+  # ERROR AND FINISHED RUNS
 
     As already mentioned, a finished run in a subfolder will have a
     file called DONE - this is the indicator that the calculation for
@@ -372,19 +400,14 @@ DESCRIPTION
 
     The program stays running, as long as your codeml or hyphy jobs
     are working.  If you press CTRL-C the program terminates and all
-    running codeml and hyphy runs are canceled.  Additionally to make
-    it easier to stop a run a file called "$PIDFILE" is created, containing
-    the process id of the parent process.  If a run is finished or
-    terminated, the "$PIDFILE" file is removed.
+    running codeml and hyphy runs are canceled.
 
     If you start a program (in the background) like
 
       nohup paPAML.pl param1 param2 ... > run.log &
 
     it will run in the background and you may close the terminal and
-    come back later.  To stop a run, enter the directory and type
-
-      kill \$(cat pid); rm pid
+    come back later.
 
     When all runs finished succesfully (or if in the meantime all
     needed jobs of a control file are done) there will be a *.result a
@@ -400,9 +423,6 @@ DESCRIPTION
 
     If a *.result file exists for a *.ctl file, the run(s) will be
     skipped if it is started again.
-    
-    Additionally a logfile called paPAML-yyyy-mm-dd-hh-mm-ss.log is
-    created where the logging will be written.
 EOF
 	exit(0);
 }
@@ -411,19 +431,15 @@ if (!@ARGV) {
 	usage();
 }
 
-# ------------------------------------------------------------------------
-# Open and close the logfile
-# ------------------------------------------------------------------------
-
-{
-	my ($sec, $min, $hour, $mday, $mon, $year) = localtime(time);
-	my $filename = sprintf("paPAML-%4d-%02d-%02d-%02d-%02d-%02d.log", $year + 1900, $mon + 1, $mday, $hour, $min, $sec);
-	open($logfile, ">", $filename);
-	print "Run is started!  See $filename for logging information...\n";
-	message("I", "The command is: " . basename($0) . " " . join(" ", @ARGV));
-}
-
 END {
+	# Clean symlinks
+	for my $pgm ($codemlpgm, $hyphypgm) {
+		if (-l $pgm) {
+			message(">", "Clean symlink $pgm");
+			unlink($pgm);
+		}
+	}
+
 	close($logfile) if ($logfile);
 }
 
@@ -439,12 +455,18 @@ sub getDate {
 
 #
 # ------------------------------------------------------------------------
-# Prints a message
+# Prints a message, either into the given logfile or on STDOUT
 # ------------------------------------------------------------------------
 #
 sub message {
 	my ($type, $message) = @_;
-	printf $logfile ("[%1s %s] %s\n", $type ? $type : "-", getDate(), $message);
+	my $s = sprintf("[%1s %s] %s\n", $type ? $type : "-", getDate(), $message);
+	if ($logfile) {
+		print $logfile $s;
+	}
+	else {
+		print $s;
+	}
 }
 
 #
@@ -482,20 +504,6 @@ sub cleanUndones {
 
 #
 # ------------------------------------------------------------------------
-# Clean program symlinks
-# ------------------------------------------------------------------------
-#
-sub cleanSymlinks {
-	for my $pgm ($codemlpgm, $hyphypgm) {
-		if (-l $pgm) {
-			message(">", "Clean symlink $pgm");
-			unlink($pgm);
-		}
-	}
-}
-
-#
-# ------------------------------------------------------------------------
 # Get parameters from command line
 # ------------------------------------------------------------------------
 #
@@ -507,6 +515,14 @@ sub getParams {
 		}
 		elsif ($p eq "-c") {
 			$clean = 1;
+		}
+		elsif ($p eq "-l") {
+			my $filename = $ARGV[++$i];
+			if (!$filename) {
+				message("E", "Parameter -l needs a filename!");
+				exit(1);
+			}
+			open($logfile, ">", $filename);
 		}
 		elsif ($p eq "-p") {
 			$para = $ARGV[++$i];
@@ -579,8 +595,21 @@ sub getParams {
 		}
 		else {
 			if ($p =~ m/^-/) {
+				my $name  = substr($p, 1);
 				my $value = $ARGV[++$i];
-				$params{substr($p, 1)} = $value;
+				$params{$name} = $value;
+				if ($name eq "seqtype") {
+					if ($value != 1) {
+						message("W",
+"You are using a non-standard codon table. Ensure that no stop codons occur in your alignment!"
+						);
+					}
+
+					# (Re-)set stopcodons if seqtype=2
+					if ($value == 2) {
+						$stopcodons = join("|", ("AGA", "AGG", "TAA", "TAG", "TGA"));
+					}
+				}
 			}
 		}
 	}
@@ -672,10 +701,6 @@ sub terminate {
 		message("", "process $pid...");
 		kill(9, $pid) if (kill(0, $pid));
 	}
-
-	cleanSymlinks();
-
-	unlink($PIDFILE) if (-f $PIDFILE);
 
 	exit(1);
 }
@@ -783,6 +808,50 @@ sub printErrors {
 			}
 		}
 	}
+}
+
+#
+# ------------------------------------------------------------------------------
+# Checks the input / sequence file
+#
+# Returns an error (=0) or okay (=1)
+# ------------------------------------------------------------------------------
+#
+sub checkSeqfile {
+	my ($seqfile) = @_;
+
+	my @a = readFile($seqfile);
+	push(@a, ">");
+
+	my ($header, $seq) = ("", "");
+	for my $line (@a) {
+		$line =~ s/\s+//g;
+		if ($line =~ m/^>/) {
+			if ($seq) {
+				if ((length($seq) % 3) != 0) {
+					message("E", "Length of sequence of header $header must be multiple of 3!");
+					return 0;
+				}
+				my @a = $seq =~ /.{3,3}/gs;
+				for my $x (@a) {
+					if ($x =~ m/$stopcodons/) {
+						my $s = join(",", split(/\|/, $stopcodons));
+						message("E", "Sequence of header $header has a stop codon of $s!");
+						return 0;
+					}
+				}
+			}
+			$header = $line;
+			$seq    = "";
+		}
+		else {
+			if ($header) {
+				$seq .= $line;
+			}
+		}
+	}
+
+	return 1;
 }
 
 #
@@ -2180,6 +2249,13 @@ sub prepare {
 		message("E", "Missing seqfile $seqfile!");
 		return;
 	}
+	else {
+		if (!checkSeqfile($seqfile)) {
+			message("E", "=== Run $ctlname had errors! ===");
+			return;
+		}
+	}
+
 	if (!$treefile || !-f $treefile) {
 		message("E", "Missing treefile $treefile!");
 		return;
@@ -2215,7 +2291,7 @@ sub loop {
 			next;
 		}
 
-		message(">", "Take run $ctlname...");
+		message(">", "=== Take run $ctlname ===");
 
 		my @a = prepare($ctlname);
 		next if (!@a);
@@ -2294,19 +2370,11 @@ sub main {
 
 	getParams();
 
+	message("I", "The command is: " . basename($0) . " " . join(" ", @ARGV));
+
 	@ctlnames = map {$_ =~ s/\.ctl$//; $_} <*.ctl> if (!@ctlnames);
 
 	if ($info) {
-
-		#print "==> Running paPAML processes (pid: treefolder)\n";
-		#my $proc = Proc::ProcessTable->new();
-		#foreach my $p (@{$proc->table}) {
-		#	if ($p->uid == $< && $p->cmndline =~ m/sh RUN paPAML/) {
-		#		my @a = split(/\s+/, $p->cmndline);
-		#		printf("%d: %s\n", $p->pid, $a[3]);
-		#	}
-		#}
-
 		foreach my $ctlname (@ctlnames) {
 			if (-f "$ctlname.result") {
 				message("I", "Run $ctlname is finished!");
@@ -2329,6 +2397,11 @@ sub main {
 		exit(0);
 	}
 
+	if (!@ctlnames) {
+		message("E", "There is no control file!");
+		exit(1);
+	}
+
 	my $codeml = which("codeml");
 	if (!$codeml) {
 		message("E", "There is no program called codeml in path!");
@@ -2341,19 +2414,10 @@ sub main {
 		exit(1);
 	}
 
-	if (!@ctlnames) {
-		message("E", "There is no control file!");
-		exit(1);
-	}
-
 	symlink($codeml, $codemlpgm);
 	symlink($hyphy,  $hyphypgm);
 
-	writeFile($PIDFILE, $$);
 	loop();
-	unlink($PIDFILE) if (-f $PIDFILE);
-
-	cleanSymlinks();
 
 	my $runtime = time - $starttime;
 	if (-f $RUNTIMEFILE) {
