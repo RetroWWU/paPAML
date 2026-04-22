@@ -607,7 +607,7 @@ sub getParams {
 
 					# (Re-)set stopcodons if seqtype=2
 					if ($value == 2) {
-						$stopcodons = join("|", ("AGA", "AGG", "TAA", "TAG", "TGA"));
+						$stopcodons = join("|", ("AGA", "AGG", "TAA", "TAG"));
 					}
 				}
 			}
