@@ -1,3 +1,7 @@
+**2026-05-15 - v2.16**
+
+Remove bayes values in omega graphs - meaning to remove the misleading info and programming error "ARRAY(...)" from the files *.B und *.BS in *result.omega
+
 **2026-04-21 - v2.15a**
 
 The input data of sequences is checked against (1) If the seqeunces length is dividable by 3 and (2) not containing stop codons.  By default the stop codons are TAA, TAG and TGA.  This can be changed using "-seqtype 2" which sets them to AGA, AGG, TAA, TAG, TGA.
