@@ -2,6 +2,7 @@
 
 #
 # ==============================================================================
+# [2026-05-15] v2.16: remove error in bayes values in omega graphs
 # [2026-04-17] v2.15a: links to codeml and hyphy now *-pid, logging param -l
 # [2026-04-17] v2.15: check sequences for length%3 and remove links correctly
 # [2026-03-23] v2.14: correct some typos
@@ -49,7 +50,7 @@ use Statistics::Distributions;
 
 $| = 1;
 
-my $VERSION = "2.15a";
+my $VERSION = "2.16";
 
 my $RUNTIMEFILE = "runtime";
 
@@ -1984,8 +1985,9 @@ sub generateOmega {
 		);
 		print F "# Number\tTree\tdN/dS_background\tdN/dS_foreground\tP-Value\n\n";
 
+		# Print without bayes values
 		for my $d (@data) {
-			print F join("\t", @$d), "\n";
+			print F join("\t", @$d[0 .. @$d - 2]), "\n";
 		}
 		close(F);
 
