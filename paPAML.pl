@@ -2,6 +2,7 @@
 
 #
 # ==============================================================================
+# [2026-09-08] v3.0: correct errors and add one new codeml run for xxx-32-00000
 # [2026-05-15] v2.16: remove error in bayes values in omega graphs
 # [2026-04-17] v2.15a: links to codeml and hyphy now *-pid, logging param -l
 # [2026-04-17] v2.15: check sequences for length%3 and remove links correctly
@@ -45,51 +46,21 @@ use Cwd qw(cwd realpath);
 use File::Basename;
 use File::Path  qw(rmtree);
 use File::Which qw(which);
+use JSON::PP    qw(decode_json);
 use Proc::ProcessTable;
 use Statistics::Distributions;
 
 $| = 1;
 
-my $VERSION = "2.16";
-
+my $VERSION     = "3.0";
 my $RUNTIMEFILE = "runtime";
 
-# The start time - used in combination with maxtime
-my $start = time;
-
-# The logfile handle;
-my $logfile;
-
-# The tag/extension for the links of running codeml, hyphy by special name
-my $tag       = $$;
-my $codemlpgm = "codeml-$tag";
-my $hyphypgm  = "hyphy-$tag";
-
-# Parameters
-my $significance = 0.05;
-my $para         = 0;
-my $tests        = "123h";
-my $debug        = 0;
-my $omega;
-my $maxtime;
-
-my ($info, $clean);
-
-my @ctlnames;
-
-# The starttime of this run and the last time check and the interval.
-# The lasttimecheck is put in "future" to have at least some time left
-# for a prognose
-my ($starttime, $lasttimecheck, $lasttimeinterval) = (time, time + 600, 600);
-
-# The actual (total) number of runs
-my $runindex = 0;
-
-# The total runs for a tree / ctl file
-my ($ctlcount, $ctlindex);
+# ------------------------------------------------------------------------------
+# Constants
+# ------------------------------------------------------------------------------
 
 # Translate codons in amino acids
-my %aacode = (
+my %AACODE = (
 	AAA => "K",
 	AAC => "N",
 	AAG => "K",
@@ -157,7 +128,7 @@ my %aacode = (
 );
 
 # Mapping icode => codon => amini acids
-my %aacode2 = (
+my %AACODE2 = (
 	1 => {
 		ATA => "M",
 		TGA => "W"
@@ -206,7 +177,7 @@ my %aacode2 = (
 );
 
 # Mapping from codeml -icode to hyphy --code
-my %icodemap = (
+my %ICODEMAP = (
 	0  => "Universal",
 	1  => "Vertebrate-mtDNA",
 	2  => "Yeast-mtDNA",
@@ -221,7 +192,7 @@ my %icodemap = (
 );
 
 # The default codeml parameters.  They can be changed over command line
-my %params = (
+my %PARAMS = (
 	"CodonFreq"    => "2",
 	"Malpha"       => "0",
 	"Mgene"        => "0",
@@ -247,7 +218,66 @@ my %params = (
 );
 
 # Default for the check of stopcodons in input sequences
-my $stopcodons = join("|", ("TAA", "TAG", "TGA"));
+my $STOPCODONS = join("|", ("TAA", "TAG", "TGA"));
+
+# svg
+
+my $FONT     = qq(font-family="monospace" font-size="12" font-weight="normal");
+my $LINETYPE = qq(fill-opacity:1.0; stroke-linecap:square; stroke-opacity:1.0; stroke-width:1);
+my $RECTTYPE = qq(fill-opacity:1.0; stroke-opacity:1.0; stroke-width:1);
+
+# The x offset of "layers" in the tree graph
+my $XDELTA = 32;
+
+# Graph settings
+my $LEFTOFFSET    = 30;
+my $TOPPADDING    = 140;
+my $LEFTPADDING   = 10;
+my $RIGHTPADDING  = 40;
+my $BOTTOMPADDING = 10;
+my $HEIGHT        = 200;
+
+my %COLORS = (
+	white   => "rgb(255,255,255)",
+	black   => "rgb(32,32,32)",
+	gray    => "rgb(128,128,128)",
+	scolor  => "rgb(32,32,255)",
+	hscolor => "rgb(255,32,32)"
+);
+
+# The start time - used in combination with maxtime
+my $start = time;
+
+# The logfile handle;
+my $logfile;
+
+# The tag/extension for the links of running codeml, hyphy by special name
+my $tag       = $$;
+my $codemlpgm = "codeml-$tag";
+my $hyphypgm  = "hyphy-$tag";
+
+# Parameters
+my $significance = 0.05;
+my $para         = 0;
+my $tests        = "123h";
+my $debug        = 0;
+my $omega;
+my $maxtime;
+
+my ($info, $clean);
+
+my @ctlnames;
+
+# The starttime of this run and the last time check and the interval.
+# The lasttimecheck is put in "future" to have at least some time left
+# for a prognose
+my ($starttime, $lasttimecheck, $lasttimeinterval) = (time, time + 600, 600);
+
+# The actual (total) number of runs
+my $runindex = 0;
+
+# The total runs for a tree / ctl file
+my ($ctlcount, $ctlindex);
 
 #
 # ------------------------------------------------------------------------
@@ -255,7 +285,7 @@ my $stopcodons = join("|", ("TAA", "TAG", "TGA"));
 # ------------------------------------------------------------------------
 #
 sub usage {
-	my $p = join("\n", map {$_ = sprintf("    %-14s %s", "-$_", $params{$_})} (sort keys %params));
+	my $p = join("\n", map {$_ = sprintf("    %-14s %s", "-$_", $PARAMS{$_})} (sort keys %PARAMS));
 
 	print <<EOF;
 USAGE
@@ -598,7 +628,7 @@ sub getParams {
 			if ($p =~ m/^-/) {
 				my $name  = substr($p, 1);
 				my $value = $ARGV[++$i];
-				$params{$name} = $value;
+				$PARAMS{$name} = $value;
 				if ($name eq "seqtype") {
 					if ($value != 1) {
 						message("W",
@@ -608,7 +638,7 @@ sub getParams {
 
 					# (Re-)set stopcodons if seqtype=2
 					if ($value == 2) {
-						$stopcodons = join("|", ("AGA", "AGG", "TAA", "TAG"));
+						$STOPCODONS = join("|", ("AGA", "AGG", "TAA", "TAG"));
 					}
 				}
 			}
@@ -646,14 +676,16 @@ sub writeFile {
 sub readFile {
 	my ($filename) = @_;
 
-	my @lines;
-	open(F, "<", $filename);
-	while (my $line = <F>) {
-		$line =~ s/^\s+//;
-		$line =~ s/\s+$//;
-		push(@lines, $line);
+	my @lines = ();
+	if (-f $filename) {
+		open(F, "<", $filename);
+		while (my $line = <F>) {
+			$line =~ s/^\s+//;
+			$line =~ s/\s+$//;
+			push(@lines, $line);
+		}
+		close(F);
 	}
-	close(F);
 
 	return @lines;
 }
@@ -835,8 +867,8 @@ sub checkSeqfile {
 				}
 				my @a = $seq =~ /.{3,3}/gs;
 				for my $x (@a) {
-					if ($x =~ m/$stopcodons/) {
-						my $s = join(",", split(/\|/, $stopcodons));
+					if ($x =~ m/$STOPCODONS/) {
+						my $s = join(",", split(/\|/, $STOPCODONS));
 						message("E", "Sequence of header $header has a stop codon of $s!");
 						return 0;
 					}
@@ -861,7 +893,7 @@ sub checkSeqfile {
 # ------------------------------------------------------------------------------
 #
 sub enbrace {
-	return join("\n", map {$_ = sprintf("|  %-82s  |", $_); $_} @_);
+	return join("\n", map {$_ = sprintf("# %-83s  |", $_); $_} @_);
 }
 
 #
@@ -918,6 +950,104 @@ sub getOmega {
 
 #
 # ------------------------------------------------------------------------------
+# Get bayes values
+# ------------------------------------------------------------------------------
+#
+sub getBayes {
+	my ($lines) = @_;
+	my @b = ();
+	for (my $k = 0 ; $k < @$lines ; $k++) {
+		if (@$lines[$k] =~ m/Bayes Empirical Bayes/) {
+			$k += 2;
+			while (@$lines[$k] =~ m/\d+\s+[A-Z\*]\s+/) {
+				my @a = split(/\s+/, @$lines[$k++]);
+				push(@b, [$a[0], $a[1], $a[2]]) if ($a[2] =~ m/\*/);
+			}
+			last;
+		}
+	}
+	return @b;
+}
+
+#
+# ------------------------------------------------------------------------------
+# Get np and lnl values
+# ------------------------------------------------------------------------------
+#
+sub getNp {
+	my ($lines) = @_;
+	for my $line (@$lines) {
+		return ($1, $2) if ($line =~ m/lnL\(.*?np:\s*(\d+)\):\s*([0-9\.\-]+)/);
+	}
+}
+
+#
+# ------------------------------------------------------------------------------
+# Returns dltr, dn and p value
+#
+# Where
+# dlnl = 2 * (lnl0 - lnl1)
+# dnp = abs(np1 - np0)
+# p = chisprob(dn, dltr)
+# ------------------------------------------------------------------------------
+#
+sub getStatistics {
+	my ($np0, $lnl0, $np1, $lnl1) = @_;
+
+	my $dlnl = 2 * ($lnl0 - $lnl1);
+	my $dnp  = abs($np1 - $np0);
+	my $p    = $dnp > 0 && $lnl0 - $lnl1 >= 0 ? Statistics::Distributions::chisqrprob($dnp, $dlnl) : 1;
+
+	return ($dlnl, $dnp, $p);
+}
+
+my $preparedData = {};
+
+#
+# ------------------------------------------------------------------------------
+# Prepare / read the data form the generated files
+# ------------------------------------------------------------------------------
+#
+sub __prepare {
+	my ($ctlname) = @_;
+
+	for my $test (2, 3) {
+		my @dirs0 = <$ctlname-${test}0-*>;
+		my @dirs1 = <$ctlname-${test}1-*>;
+		my @dirs2 = <$ctlname-${test}2-*>;
+
+		my @lines2 = readFile("$dirs2[0]/mlc") if ($test == 3);
+
+		# Get values for the run xxx-32-00000
+		my @b2 = getBayes(\@lines2);
+		my ($np2, $lnl2) = getNp(\@lines2);
+
+		$preparedData->{$test}->{b2}   = \@b2;
+		$preparedData->{$test}->{np2}  = $np2;
+		$preparedData->{$test}->{lnl2} = $lnl2;
+
+		# Loop over all directories (trees)
+		for (my $treeno = 0 ; $treeno < @dirs0 ; $treeno++) {
+			my @lines0 = readFile("$dirs0[$treeno]/mlc");
+			my @lines1 = readFile("$dirs1[$treeno]/mlc");
+
+			my @b0 = getBayes(\@lines0);
+			my ($np0, $lnl0) = getNp(\@lines0);
+			my @b1 = getBayes(\@lines1);
+			my ($np1, $lnl1) = getNp(\@lines1);
+
+			$preparedData->{$test}->{$treeno}->{b0}   = \@b0;
+			$preparedData->{$test}->{$treeno}->{np0}  = $np0;
+			$preparedData->{$test}->{$treeno}->{lnl0} = $lnl0;
+			$preparedData->{$test}->{$treeno}->{b1}   = \@b1;
+			$preparedData->{$test}->{$treeno}->{np1}  = $np1;
+			$preparedData->{$test}->{$treeno}->{lnl1} = $lnl1;
+		}
+	}
+}
+
+#
+# ------------------------------------------------------------------------------
 # Prints codeml data
 # ------------------------------------------------------------------------------
 #
@@ -927,60 +1057,60 @@ sub generateCodeml {
 	my ($bayes12, $bayes78, $codondata) = ({}, {}, {});
 
 	print RESULT <<EOS;
-+--------------------------------------------------------------------------------------+
-|  Codeml test results                                                                 |
-+--------------------------------------------------------------------------------------+
+# -------------------------------------------------------------------------------------+
+# Codeml test results                                                                  |
+# -------------------------------------------------------------------------------------+
 EOS
 
 	# Calculate model 1
 	if ($tests =~ m/1/) {
 		print RESULT <<EOS;
 
-+--------------------------------------------------------------------------------------+
-|  Results Test 1 - site models                                                        |
-+--------------------------------------------------------------------------------------+
+# -------------------------------------------------------------------------------------+
+# Results Test 1 - site models                                                         |
+# -------------------------------------------------------------------------------------+
 
-+--------------------------------------------------------------------------------------+
-|  EXAMPLE                                                                             |
-|                                                                                      |
-|  p-value_significance_limit: 0.05                                                    |
-|                                                                                      |
-|  Model_1_M0              23                      -1549.837332     0.6728             |
-|  Model_2_M               25                      -1545.728933     1.0040             |
-|  Model_7_M0              23                      -1549.873442     0.7000             |
-|  Model_8_M               25                      -1545.726929     1.0033             |
-|                                                                                      |
-|  Site models (1,2,7,8)   np (degrees of freedom)  lnl-values      w (omega)          |
-|                                                                   -values (dn/ds)    |
-|                                                                                      |
-|  Four site models, model 1 and 7 allow for neutral and negative selection            |
-|  (the null models), while model 2 and 8 also allow for positive selection            |
-|  and are compared with their counterparts (2 with 1 and 8 with 7).                   |
-|                                                                                      |
-|  Test_1_2                8.216798                2                0.016434           |
-|  Test_7_8                8.293026                2                0.015819           |
-|  CHI-square              difference lnl x2       Difference np    P-value            |
-|                                                                                      |
-|  The Model 1-2 comparison is usually more stringent than the model 7-8 comparison    |
-|  and therefore not as sensitive.                                                     |
-|                                                                                      |
-|  Bayes_1_2                                BEB                                        |
-|  76                       P               0.959*           4.837      +/- 2.203      |
-|  Bayes_7_8                                                                           |
-|  13                       H               0.972*           4.025      +/- 1.882      |
-|  76                       P               0.978*           4.053      +/- 1.874      |
-|  Codon number             AA (reference)  P-values sign.   w-values   SD of w-values |
-|                                            *P > 95%                                  |
-|                                           **P > 99%                                  |
-|  Sites under significant positive selection found with Bayes Empirical Bayes (BEB)   |
-|  analysis, both for model 1-2 and model 7-8 comparison.                              |
-|                                                                                      |
-|  Conclusions: In this example, the site model comparisons show a significant         |
-|  difference from the null models (P-values =  0.016434 and 0.015819, respectively)   |
-|  and found two sites under significant positive selection across the phylogeny       |
-|  (13 H and 76 P). 13 H was only discovered by the less stringent and more sensitive  |
-|  model 7-8 comparison.                                                               |
-+--------------------------------------------------------------------------------------+
+# -------------------------------------------------------------------------------------+
+# EXAMPLE                                                                              |
+#                                                                                      |
+# p-value_significance_limit: 0.05                                                     |
+#                                                                                      |
+# Model_1_M0              23                      -1549.837332     0.6728              |
+# Model_2_M               25                      -1545.728933     1.0040              |
+# Model_7_M0              23                      -1549.873442     0.7000              |
+# Model_8_M               25                      -1545.726929     1.0033              |
+#                                                                                      |
+# Site models (1,2,7,8)   np (degrees of freedom)  lnl-values      w (omega)           |
+#                                                                  -values (dn/ds)     |
+#                                                                                      |
+# Four site models, model 1 and 7 allow for neutral and negative selection             |
+# (the null models), while model 2 and 8 also allow for positive selection             |
+# and are compared with their counterparts (2 with 1 and 8 with 7).                    |
+#                                                                                      |
+# Test_1_2                8.216798                2                0.016434            |
+# Test_7_8                8.293026                2                0.015819            |
+# CHI-square              difference lnl x2       Difference np    P-value             |
+#                                                                                      |
+# The Model 1-2 comparison is usually more stringent than the model 7-8 comparison     |
+# and therefore not as sensitive.                                                      |
+#                                                                                      |
+# Bayes_1_2                                BEB                                         |
+# 76                       P               0.959*           4.837      +/- 2.203       |
+# Bayes_7_8                                                                            |
+# 13                       H               0.972*           4.025      +/- 1.882       |
+# 76                       P               0.978*           4.053      +/- 1.874       |
+# Codon number             AA (reference)  P-values sign.   w-values   SD of w-values  |
+#                                           *P > 95%                                   |
+#                                          **P > 99%                                   |
+# Sites under significant positive selection found with Bayes Empirical Bayes (BEB)    |
+# analysis, both for model 1-2 and model 7-8 comparison.                               |
+#                                                                                      |
+# Conclusions: In this example, the site model comparisons show a significant          |
+# difference from the null models (P-values =  0.016434 and 0.015819, respectively)    |
+# and found two sites under significant positive selection across the phylogeny        |
+# (13 H and 76 P). 13 H was only discovered by the less stringent and more sensitive   |
+# model 7-8 comparison.                                                                |
+# -------------------------------------------------------------------------------------+
 
 EOS
 
@@ -1008,13 +1138,11 @@ EOS
 			printf RESULT ("%s\t%s\n", "Model_" . $ms[$index++], join("\t", @$x));
 		}
 
-		my $dltr = abs(2 * ($a[0]->[1] - $a[1]->[1]));
-		my $dn   = abs($a[1]->[0] - $a[0]->[0]);
-		printf RESULT ("%s\t%f\t%d\t%f\n", "Test_1_2", $dltr, $dn, Statistics::Distributions::chisqrprob($dn, $dltr));
+		my ($dlnl, $dnp, $p) = getStatistics($a[1]->[0], $a[1]->[1], $a[0]->[0], $a[0]->[1]);
+		printf RESULT ("%s\t%f\t%d\t%f\n", "Test_1_2", $dlnl, $dnp, $p);
 
-		$dltr = abs(2 * ($a[2]->[1] - $a[3]->[1]));
-		$dn   = abs($a[3]->[0] - $a[2]->[0]);
-		printf RESULT ("%s\t%f\t%d\t%f\n", "Test_7_8", $dltr, $dn, Statistics::Distributions::chisqrprob($dn, $dltr));
+		($dlnl, $dnp, $p) = getStatistics($a[3]->[0], $a[3]->[1], $a[2]->[0], $a[2]->[1]);
+		printf RESULT ("%s\t%f\t%d\t%f\n", "Test_7_8", $dlnl, $dnp, $p);
 
 		$index = 0;
 		for (my $i = 0 ; $i < @lines ; $i++) {
@@ -1026,7 +1154,7 @@ EOS
 					if ($b[2] =~ m/\*/) {
 						printf RESULT ("%d\t%s\t%s\t%.3f\t%s\t%.3f\n", $b[0], $b[1], $b[2], $b[3], $b[4], $b[5]);
 						$b[2] =~ s/\*+$//g;
-						($index == 0 ? $bayes12->{$b[0] - 1} : $bayes78->{$b[0] - 1}) = 1 - $b[2];
+						($index == 0 ? $bayes12->{$b[0] - 1} : $bayes78->{$b[0] - 1}) = $b[2];
 					}
 				}
 				$index++;
@@ -1041,6 +1169,7 @@ EOS
 		# Get folders for "without or with" fixomega
 		my @dirs0 = <$ctlname-${test}0-*>;
 		my @dirs1 = <$ctlname-${test}1-*>;
+		my @dirs2 = <$ctlname-${test}2-*>;
 
 		# Write header if no data
 		if (!@dirs0) {
@@ -1057,226 +1186,234 @@ EOS
 		if ($test == 2) {
 			print RESULT <<EOS;
 
-+--------------------------------------------------------------------------------------+
-|  Results Test 2 - branch-site specific                                               |
+# -------------------------------------------------------------------------------------+
+# Results Test 2 - branch-site specific                                                |
 $s1
 $s2
-+--------------------------------------------------------------------------------------+
+# -------------------------------------------------------------------------------------+
 
-+--------------------------------------------------------------------------------------+
-|  EXAMPLE                                                                             |
-|                                                                                      |
-|  p-value_significance_limit: 0.05                                                    |
-|  p-value_significance_limit (corrected_for_multiple_testing): 0.00455                |
-|  correction: 0.05/11 (11 = number of foreground branches/tested trees                |
-|                                                                                      |
-|  Tree_3 ((Hsa_Human,Hla_Gibbon) #1,((Cgu/Can_colobus, Pne_langur),Mmu_rhesus),       |
-|  (Ssc_squirrelM,Cja_marmorset));                                                     |
-|                                                                                      |
-|  analyzed tree with foreground branch labeled #1                                     |
-|                                                                                      |
-|  Tree_3_M                16                      -898.514392                         |
-|  omega free (0 < w)      np (degrees of freedom) lnl value                           |
-|                                                                                      |
-|  Bayes_3_M                                                                           |
-|   79                     L                        0.963*                             |
-|  122                     R                        0.956*                             |
-|                                                                                      |
-|  codon number            amino acid (reference)   P-value and significance           |
-|                                                   of selection on site               |
-|                                                    *P > 95%                          |
-|                                                   **P > 99%                          |
-|                                                                                      |
-|  Sites under significant positive sel. found with Bayes Empirical Bayes analysis     |
-|                                                                                      |
-|  Tree_3_M0               15                      -901.979225                         |
-|  Omega fixed (w=1)       np (degrees of freedom) lnl value                           |
-|                                                                                      |
-|  Test_3                  6.929666                 1                 0.000706         |
-|  CHI-square              difference lnl x2        difference np     P-value          |
-|                                                                                      |
-|  Tree_3_site_classes                                                                 |
-|  Site class              0          1          2a          2b                        |
-|  Proportion              0.39899    0.47265    0.05875     0.06960                   |
-|  Background_w            0.00000    1.00000    0.00000     1.00000                   |
-|  Foreground_w            0.00000    1.00000  999.00000   999.00000                   |
-|                                                                                      |
-|  Different site classes for background (B) and foreground (F) branch(es) with        |
-|  corresponding w-values                                                              |
-|                                                                                      |
-|  Site class nomenclature     0: 0 < w < 1     for B and F                            |
-|                              1: w = 1         for B and F                            |
-|                             2a: 0 < w < 1     for B and w ≧ 1 for F                  |
-|                             2b: w = 1         for B and w ≧ 1 for F                  |
-|                                                                                      |
-|  Proportion of overall sites of specific site classes (combined equal to 1)          |
-|                                                                                      |
-|  Tree_3_branch_omega     0.542250                 128.694300                         |
-|  w-values of different   overall w-value of B     Overall w-value of F               |
-|  branch types overall                                                                |
-|                                                                                      |
-|  Conclusions: Significant positive selection (P = 0.000706) and specific sites       |
-|  under positive selection (79 L and 122 R) found in the foreground branch (exact     |
-|  overall w-value difficult to indicate due to the upper limit of 999 being reached   |
-|  in the site classes). After considering multiple testing, the new stringent         |
-|  P-value is 0.000318.                                                                |
-+--------------------------------------------------------------------------------------+
+# -------------------------------------------------------------------------------------+
+# EXAMPLE                                                                              |
+#                                                                                      |
+# p-value_significance_limit: 0.05                                                     |
+# p-value_significance_limit (corrected_for_multiple_testing): 0.00455                 |
+# correction: 0.05/11 (11 = number of foreground branches/tested trees                 |
+#                                                                                      |
+# Tree_3 ((Hsa_Human,Hla_Gibbon) #1,((Cgu/Can_colobus, Pne_langur),Mmu_rhesus),        |
+# (Ssc_squirrelM,Cja_marmorset));                                                      |
+#                                                                                      |
+# analyzed tree with foreground branch labeled #1                                      |
+#                                                                                      |
+# Tree_3_M                16                      -898.514392                          |
+# omega free (0 < w)      np (degrees of freedom) lnl value                            |
+#                                                                                      |
+# Bayes_3_M                                                                            |
+#  79                     L                        0.963*                              |
+# 122                     R                        0.956*                              |
+#                                                                                      |
+# codon number            amino acid (reference)   P-value and significance            |
+#                                                  of selection on site                |
+#                                                   *P > 95%                           |
+#                                                  **P > 99%                           |
+#                                                                                      |
+# Sites under significant positive sel. found with Bayes Empirical Bayes analysis      |
+#                                                                                      |
+# Tree_3_M0               15                      -901.979225                          |
+# Omega fixed (w=1)       np (degrees of freedom) lnl value                            |
+#                                                                                      |
+# Test_3                  6.929666                 1                 0.000706          |
+# CHI-square              difference lnl x2        difference np     P-value           |
+#                                                                                      |
+# Tree_3_site_classes                                                                  |
+# Site class              0          1          2a          2b                         |
+# Proportion              0.39899    0.47265    0.05875     0.06960                    |
+# Background_w            0.00000    1.00000    0.00000     1.00000                    |
+# Foreground_w            0.00000    1.00000  999.00000   999.00000                    |
+#                                                                                      |
+# Different site classes for background (B) and foreground (F) branch(es) with         |
+# corresponding w-values                                                               |
+#                                                                                      |
+# Site class nomenclature     0: 0 < w < 1     for B and F                             |
+#                             1: w = 1         for B and F                             |
+#                            2a: 0 < w < 1     for B and w ≧ 1 for F                   |
+#                            2b: w = 1         for B and w ≧ 1 for F                   |
+#                                                                                      |
+# Proportion of overall sites of specific site classes (combined equal to 1)           |
+#                                                                                      |
+# Tree_3_branch_omega     0.542250                 128.694300                          |
+# w-values of different   overall w-value of B     Overall w-value of F                |
+# branch types overall                                                                 |
+#                                                                                      |
+# Conclusions: Significant positive selection (P = 0.000706) and specific sites        |
+# under positive selection (79 L and 122 R) found in the foreground branch (exact      |
+# overall w-value difficult to indicate due to the upper limit of 999 being reached    |
+# in the site classes). After considering multiple testing, the new stringent          |
+# P-value is 0.000318.                                                                 |
+# -------------------------------------------------------------------------------------+
 EOS
 		}
 		else {
 			print RESULT <<EOS;
 
-+--------------------------------------------------------------------------------------+
-|  Results Test 3 - branch model - branch specific                                     |
+# -------------------------------------------------------------------------------------+
+# Results Test 3 - branch model - branch specific                                      |
 $s1
 $s2
-+--------------------------------------------------------------------------------------+
+# -------------------------------------------------------------------------------------+
 
-+--------------------------------------------------------------------------------------+
-|  EXAMPLE                                                                             |
-|                                                                                      |
-|  p-value_significance_limit: 0.05                                                    |
-|  p-value_significance_limit (corrected_for_multiple_testing): 0.0125                 |
-|  correction: 0.05/4 (4 = number of foreground branches/tested trees)                 |
-|                                                                                      |
-|  Tree_3 (pon_abe,(pan_tro,hom_sap #1));                                              |
-|                                                                                      |
-|  analyzed tree with foreground branch labeled #1                                     |
-|                                                                                      |
-|  Tree_3_M                7                      -1882.816024                         |
-|  Tree_3_M0               6                      -1884.852625                         |
-|  omega free (0 < w)      np (degrees of freedom) lnl value                           |
-|  omega fixed to (w = 1)  np (degrees of freedom) lnl value                           |
-|                                                                                      |
-|  Test_3          4.073202            1              0.043569                         |
-|  CHI-square      difference lnl x2   difference np  P-value                          |
-|                                                                                      |
-|  Tree_3_branch_omega     0.008030               1.015790                             |
-|  w-values of different   w-value                w-value                              |
-|  branch types            background             foreground branch                    |
-|                                                                                      |
-|  Conclusions: In this example, the w-value of #1 is significantly different          |
-|  (P = 0.043569) than the background w. Nevertheless, after applying the correction   |
-|  for multiple testing (new P-boundary = 0.0125), the w-value  (P = 0.043569) is no   |
-|  longer significant.                                                                 |
-+--------------------------------------------------------------------------------------+
+# -------------------------------------------------------------------------------------+
+# EXAMPLE                                                                              |
+#                                                                                      |
+# p-value_significance_limit: 0.05                                                     |
+# p-value_significance_limit (corrected_for_multiple_testing): 0.0125                  |
+# correction: 0.05/4 (4 = number of foreground branches/tested trees)                  |
+#                                                                                      |
+# Tree_3 (pon_abe,(pan_tro,hom_sap #1));                                               |
+#                                                                                      |
+# analyzed tree with foreground branch labeled #1                                      |
+#                                                                                      |
+# Test_P_n: compares M0 model with foreground branch w =1 (neutrality) with M model    |
+# in with foreground branch w is free.                                                 |
+# Test_P_fb: compares M_fb model with foreground branch w = background branch w in     |
+# with M model both are free.                                                          |
+#                                                                                      |
+# Significant difference of foreground branch w from neutrality                        |
+#                                                                                      |
+# Tree_3_M                7 -1882.816024                                               |
+# Tree_3_M_n              6 -1884.852625                                               |
+# omega free (0 < w)      np (degrees of freedom) lnl value                            |
+# omega fixed to (w = 1)  np (degrees of freedom) lnl value                            |
+#                                                                                      |
+# Test_3          4.073202            1 0.043569                                       |
+# CHI-square      difference lnl x2   difference np P-value                            |
+#                                                                                      |
+# Tree_3_branch_omega     0.008030 1.015790                                            |
+# w-values of different   w-value w-value                                              |
+# branch types            background             foreground branch                     |
+#                                                                                      |
+# Conclusions: In this example, the w-value of #1 is significantly different           |
+# (P_n = 0.043569) than w=1. Nevertheless, after applying the correction               |
+# for multiple testing (new P-boundary = 0.0125), the w-value (P = 0.043569) is no     |
+# longer significant.                                                                  |
+#                                                                                      |
+# Significant difference of foreground branch w from background branch w               |
+#                                                                                      |
+# Tree_3_M                7 -1882.816024                                               |
+# Tree_3_M_fb             6 -1884.852625                                               |
+# omega free (0 < w)      np (degrees of freedom) lnl value                            |
+# omega fixed to (w = 1)  np (degrees of freedom) lnl value                            |
+#                                                                                      |
+# Test_3          4.073202            1 0.043569                                       |
+# CHI-square      difference lnl x2   difference np P-value                            |
+#                                                                                      |
+# Conclusions: In this example, the w-value of #1 is significantly different           |
+# (P_fb = 0.043569) than the background w. Nevertheless, after applying the            |
+# correction for multiple testing (new P-boundary = 0.0125), the w-value               |
+# (P = 0.043569) is no longer significant.                                             |
+# -------------------------------------------------------------------------------------+
 EOS
 		}
 
-		my @data = ();
+		my @data   = ();
+		my @lines2 = readFile("$dirs2[0]/mlc") if ($test == 3);
+
+		# Get values for the run xxx-32-00000
+		my @b2 = getBayes(\@lines2);
+		my ($np2, $lnl2) = getNp(\@lines2);
 
 		# Loop over all directories (trees) and store data
 		for (my $treeno = 0 ; $treeno < @dirs0 ; $treeno++) {
 			my @lines0 = readFile("$dirs0[$treeno]/mlc");
 			my @lines1 = readFile("$dirs1[$treeno]/mlc");
 
-			my @b0 = ();
-			my @b1 = ();
-			my ($np0, $lnl0) = (0, 0);
-			my ($np1, $lnl1) = (0, 0);
+			my @b0 = getBayes(\@lines0);
+			my ($np0, $lnl0) = getNp(\@lines0);
+			my @b1 = getBayes(\@lines1);
+			my ($np1, $lnl1) = getNp(\@lines1);
 
-			# Get Bayes values
-			for (my $k = 0 ; $k < @lines0 ; $k++) {
-				if ($lines0[$k] =~ m/Bayes Empirical Bayes/) {
-					$k += 2;
-					while ($lines0[$k] =~ m/\d+\s+[A-Z\*]\s+/) {
-						my @a = split(/\s+/, $lines0[$k++]);
-						push(@b0, [$a[0], $a[1], $a[2]]) if ($a[2] =~ m/\*/);
-					}
-					last;
-				}
-			}
-			for (my $k = 0 ; $k < @lines1 ; $k++) {
-				if ($lines1[$k] =~ m/Bayes Empirical Bayes/) {
-					$k += 2;
-					while ($lines1[$k] =~ m/\d+\s+[A-Z\*]\s+/) {
-						my @a = split(/\s+/, $lines1[$k++]);
-						push(@b1, [$a[0], $a[1], $a[2]]) if ($a[2] =~ m/\*/);
-					}
-					last;
-				}
-			}
+			#if (($np0 == $np1) || ($lnl0 == $lnl1)) {
+			#	message("I", sprintf("Test %d: Tree %d skipped - np or lnl are identical", $test, $treeno + 1));
+			#	next;
+			#}
 
-			# Get np and lnl values
-			for my $line (@lines0) {
-				if ($line =~ m/lnL\(.*?np:\s*(\d+)\):\s*([0-9\.\-]+)/) {
-					($np0, $lnl0) = ($1, $2);
-					last;
-				}
-			}
-			for my $line (@lines1) {
-				if ($line =~ m/lnL\(.*?np:\s*(\d+)\):\s*([0-9\.\-]+)/) {
-					($np1, $lnl1) = ($1, $2);
-					last;
-				}
-			}
+			push(@data, [$treeno, \@lines0, \@b0, \@b1, $np0, $lnl0, $np1, $lnl1]);
 
-			next if (($np0 == $np1) || ($lnl0 == $lnl1));
-
-			my $dltr = abs(2 * ($lnl1 - $lnl0));
-			my $dn   = abs($np1 - $np0);
-			my $p    = Statistics::Distributions::chisqrprob($dn, $dltr);
-
-			push(@data, [$treeno, \@lines0, \@lines1, \@b0, \@b1, $np0, $lnl0, $np1, $lnl1, $dltr, $dn, $p]);
-		}
-
-		# Store codondata for later usage
-		for (my $n = 0 ; $n < @data ; $n++) {
-			my $treeno = $data[$n]->[0];
-			my $b0     = $data[$n]->[3];
-			my $b1     = $data[$n]->[4];
-			map {$codondata->{$_->[0] - 1}->{"2"} .= sprintf(",Tree_%d:%0.3f", ($treeno + 1), 1 - $_->[2])} @$b0
-			  if ($b0);
-			map {$codondata->{$_->[0] - 1}->{"2"} .= sprintf(",Tree_%d:%0.3f", ($treeno + 1), 1 - $_->[2])} @$b1
-			  if ($b1);
+			map {$codondata->{$_->[0] - 1}->{"2"} .= sprintf(",Tree_%d:%0.3f", ($treeno + 1), $_->[2])} @b0
+			  if (@b0);
+			map {$codondata->{$_->[0] - 1}->{"2"} .= sprintf(",Tree_%d:%0.3f", ($treeno + 1), $_->[2])} @b1
+			  if (@b1);
 		}
 
 		# Loop over significances
 		my @s = ($significance, $significance / @dirs0);
 		for (my $k = 0 ; $k < @s ; $k++) {
 			print RESULT
-			  "\n+--------------------------------------------------------------------------------------\n",
-			  sprintf("==> Tested branches with p < %f\n", $s[$k]),
-			  "+--------------------------------------------------------------------------------------\n";
+			  "\n# -------------------------------------------------------------------------------------\n",
+			  sprintf("# Tested branches with p < %f\n", $s[$k]),
+			  "# -------------------------------------------------------------------------------------\n";
 
 			for (my $n = 0 ; $n < @data ; $n++) {
-				my ($treeno, $lines0, $lines1, $b0, $b1, $np0, $lnl0, $np1, $lnl1, $dltr, $dn, $p) = @{$data[$n]};
+				my ($treeno, $lines0, $b0, $b1, $np0, $lnl0, $np1, $lnl1) = @{$data[$n]};
 
-				if ($p < $s[$k]) {
-					my $branchtype = printTree($dirs0[$treeno], $treeno);
-
-					printf RESULT ("%s\t%d\t%s\n", "Tree_" . ($treeno + 1) . "_M", $np0, $lnl0);
-					if ($b0 && @$b0) {
-						printf RESULT ("Bayes_%d_O\n", $treeno + 1);
-						print RESULT join("\n", map {sprintf(("%d\t%s\t%s", $_->[0], $_->[1], $_->[2]))} @$b0), "\n";
-					}
-
-					printf RESULT ("%s\t%d\t%s\n", "Tree_" . ($treeno + 1) . "_M0", $np1, $lnl1);
-					if ($b1 && @$b1) {
-						printf RESULT ("Bayes_%d_M\n", $treeno + 1);
-						print RESULT join("\n", map {sprintf(("%d\t%s\t%s", $_->[0], $_->[1], $_->[2]))} @$b1), "\n";
-					}
-
-					printf RESULT ("%s\t%f\t%d\t%f\n", "Test_" . ($treeno + 1), $dltr, $dn, $p);
-
-					# Calculate background/foreground values
-
-					my ($dn, $ds, $index) = getOmega($test, $lines0);
-					if ($test eq "2") {
-						printf RESULT ("Tree_%d_site_classes\n", $treeno + 1);
-						for (my $i = 0 ; $i < 4 ; $i++) {
-							my $line = $lines0->[$index + $i];
-							$line =~ s/site class/site_class/;
-							$line =~ s/d w/d_w/;
-							$line =~ s/[ ]+/\t/g;
-							print RESULT $line, "\n";
-						}
-					}
-					printf RESULT ("Tree_%d_branch_omega\t%f\t%f\n", $treeno + 1, $dn, $ds);
-					printf RESULT ("Differenz_omega\t%f\n",          abs($dn - $ds));
-					printf RESULT ("Selection_pressure\t%s\n",       $dn > $ds ? "B>F" : ($dn < $ds ? "B<F" : "B=F"));
-					printf RESULT ("Branchtype\t%s\n",               $branchtype);
+				my ($dlnl, $dnp, $p) = getStatistics($np0, $lnl0, $np1, $lnl1);
+				if ($test == 2 && $p >= $s[$k]) {
+					message("I", sprintf("Test %d: Tree %d skipped, p = %f", $test, $treeno + 1, $p));
+					next;
 				}
+
+				my ($dlnl2, $dnp2, $p2);
+				if ($test == 3) {
+					($dlnl2, $dnp2, $p2) = getStatistics($np0, $lnl0, $np2, $lnl2);
+					if ($p >= $s[$k] && $p2 >= $s[$k]) {
+						message("I", sprintf("Test %d: Tree %d skipped, p = %f, p2 = %f", $test, $treeno + 1, $p, $p2));
+						next;
+					}
+				}
+
+				my $branchtype = printTree($dirs0[$treeno], $treeno);
+
+				printf RESULT ("%s\t%d\t%s\n", "Tree_" . ($treeno + 1) . "_M", $np0, $lnl0);
+				if ($b0 && @$b0) {
+					printf RESULT ("Bayes_%d_O\n", $treeno + 1);
+					print RESULT join("\n", map {sprintf(("%d\t%s\t%s", $_->[0], $_->[1], $_->[2]))} @$b0), "\n";
+				}
+
+				printf RESULT ("%s\t%d\t%s\n", "Tree_" . ($treeno + 1) . "_M_n", $np1, $lnl1);
+				if ($b1 && @$b1) {
+					printf RESULT ("Bayes_%d_M\n", $treeno + 1);
+					print RESULT join("\n", map {sprintf(("%d\t%s\t%s", $_->[0], $_->[1], $_->[2]))} @$b1), "\n";
+				}
+
+				if ($test == 3) {
+					printf RESULT ("%s\t%d\t%s\n", "Tree_" . ($treeno + 1) . "_M_fb", $np2, $lnl2);
+					if (@b2) {
+						printf RESULT ("Bayes_M_fb\n");
+						print RESULT join("\n", map {sprintf(("%d\t%s\t%s", $_->[0], $_->[1], $_->[2]))} @b2), "\n";
+					}
+				}
+
+				printf RESULT ("%s\t%f\t%d\t%f\n", "Test_" . ($treeno + 1), $dlnl, $dnp, $p);
+
+				if ($test == 3) {
+					printf RESULT ("%s\t%f\t%d\t%f\n", "Test_" . ($treeno + 1) . "_fb", $dlnl2, $dnp2, $p2);
+				}
+
+				# Calculate background/foreground values
+				my ($dn, $ds, $index) = getOmega($test, $lines0);
+				if ($test eq "2") {
+					printf RESULT ("Tree_%d_site_classes\n", $treeno + 1);
+					for (my $i = 0 ; $i < 4 ; $i++) {
+						my $line = $lines0->[$index + $i];
+						$line =~ s/site class/site_class/;
+						$line =~ s/d w/d_w/;
+						$line =~ s/[ ]+/\t/g;
+						print RESULT $line, "\n";
+					}
+				}
+				printf RESULT ("Tree_%d_branch_omega\t%f\t%f\n", $treeno + 1, $dn, $ds);
+				printf RESULT ("Absolute_delta_omega\t%f\n",     abs($dn - $ds));
+				printf RESULT ("Omega_direction\t%s\n",          $dn > $ds ? "B>F" : ($dn < $ds ? "B<F" : "B=F"));
+				printf RESULT ("Branchtype\t%s\n",               $branchtype);
 			}
 		}
 	}
@@ -1292,63 +1429,132 @@ EOS
 sub generateHyphy {
 	my ($ctlname, $codondata) = @_;
 
+	my $read = sub {
+		my ($filename) = @_;
+		open(F, "<", $filename) or die "Cannot open JSON file $filename: $!";
+		local $/;
+		my $text = <F>;
+		close(F);
+		return decode_json($text);
+	};
+
+	my $flatten = sub {
+		my ($a) = @_;
+		my @b;
+		for my $entry (@$a) {
+			push(@b, ref($entry) eq "ARRAY" ? @$entry : $entry);
+		}
+		return @b;
+	};
+
 	print RESULT <<EOS;
 
-+--------------------------------------------------------------------------------------+
-|  Results Test 4 - HyPhy FEL                                                          |
-+--------------------------------------------------------------------------------------+
+# -------------------------------------------------------------------------------------+
+# Results Test 4 - HyPhy FEL                                                           |
+# -------------------------------------------------------------------------------------+
 
-+--------------------------------------------------------------------------------------+
-|  EXAMPLE                                                                             |
-|                                                                                      |
-|  P-value_significance_limit: 0.05                                                    |
-|                                                                                      |
-|  codon number (reference)   "+"/"-"                      P-value                     |
-|  66                            -                         0.0068                      |
-|  76                            +                         0.028                       |
-|                                positive selection(+)                                 |
-|                                negative selection(-)                                 |
-|                                                                                      |
-|  Conclusions: In this example, the HyPhy FEL algorithm detected one site with        |
-|  significant negative selection (P = 0.0068) and one site with significant           |
-|  positive selection (P = 0.0288) across the phylogeny.                               |
-+--------------------------------------------------------------------------------------+
+# -------------------------------------------------------------------------------------+
+# EXAMPLE                                                                              |
+#                                                                                      |
+# P-value_significance_limit: 0.05                                                     |
+#                                                                                      |
+# codon number (reference)   "+"/"-"                      P-value                      |
+# 66                            -                         0.0068                       |
+# 76                            +                         0.028                        |
+#                               positive selection(+)                                  |
+#                               negative selection(-)                                  |
+#                                                                                      |
+# Conclusions: In this example, the HyPhy FEL algorithm detected one site with         |
+# significant negative selection (P = 0.0068) and one site with significant            |
+# positive selection (P = 0.0288) across the phylogeny.                                |
+# -------------------------------------------------------------------------------------+
 
 EOS
 
-	my ($countp, $countn) = (0, 0);
-	my $lineno = 0;
-	my @lines  = readFile("$ctlname-hyphy/out");
+	eval {
+		my $json = $read->(<$ctlname-hyphy/*.FEL.json>);
 
-	while ($lineno < @lines && !($lines[$lineno] =~ m/For partition 1 these sites/))           {$lineno++}
-	while ($lineno < @lines && !($lines[$lineno] =~ m/(\e\[[0-9;]*m(?:\e\[K)?|[\x80-\xff]+)/)) {$lineno++}
-	while ($lineno < @lines && $lines[$lineno] =~ m/(\e\[[0-9;]*m(?:\e\[K)?|[\x80-\xff]+)/) {
-		my $line = $lines[$lineno++];
+		# Check data types
+		die "Missing MLE block"       if (!(ref($json->{"MLE"}) eq "HASH"));
+		die "Missing MLE headers"     if (!(ref($json->{"MLE"}->{"headers"}) eq "ARRAY"));
+		die "Missing MLE content"     if (!(ref($json->{"MLE"}->{"content"}) eq "HASH"));
+		die "Missing data partitions" if (!(ref($json->{"data partitions"}) eq "HASH"));
 
-		# Delete blanks and escape sequences
-		$line =~ s/\s+//g;
-		$line =~ s/\x1b.*?\x6d//g;
-
-		my @a = split(/\|/, $line);
-		last if (@a < 5);
-
-		my $pos = $a[6] =~ m/Pos/;
-		$a[6] =~ m/p=(\d\.\d+)/;
-		my $value = $1;
-
-		$codondata->{$a[1] - 1}->{$pos ? "h+" : "h-"} = $value;
-		printf RESULT ("%d\t%s\t%0.4f\n", $a[1], $pos ? "+" : "-", $value);
-
-		if ($pos) {
-			$countp++;
+		# Build column map.
+		my %column;
+		my $headers = $json->{"MLE"}->{"headers"};
+		for (my $i = 0 ; $i < @$headers ; $i++) {
+			my $h    = $headers->[$i];
+			my $name = ref($h) eq "ARRAY" ? $h->[0] : $h;
+			$column{$name} = $i;
 		}
-		else {
-			$countn++;
+
+		for my $required ("alpha", "beta", "p-value") {
+			die "Missing FEL column '$required'" if (!exists $column{$required});
 		}
+
+		my ($countp, $countn) = (0, 0);
+		my %seen;
+
+		# Loop over partitions
+		for my $pn (sort {$a <=> $b} keys %{$json->{"MLE"}->{"content"}}) {
+			my $part = $json->{"data partitions"}->{$pn};
+			if (!$part) {
+				message("E", "No data-partition metadata for partition $pn");
+				next;
+			}
+
+			my $rows  = $json->{"MLE"}->{"content"}->{$pn};
+			my @sites = $flatten->($part->{"coverage"});
+
+			if (@$rows != @sites) {
+				message("E", "Row/Site count mismatch for partition $pn");
+				next;
+			}
+
+			for (my $i = 0 ; $i < @$rows ; $i++) {
+				my $row   = $rows->[$i];
+				my $site  = $sites[$i];    # zero-based alignment/codon index
+				my $codon = $site + 1;     # one-based paPAML output
+
+				if ($seen{$site}++) {
+					message("E", "Duplicate FEL site $codon");
+					next;
+				}
+
+				my $alpha = $row->[$column{"alpha"}];
+				my $beta  = $row->[$column{"beta"}];
+				my $p     = $row->[$column{"p-value"}];
+
+				if (!defined($p) || $p < 0 || $p > 1) {
+					message("E", "Invalid p-value at codon $codon");
+					next;
+				}
+
+				if ($p <= $significance) {
+					if ($beta > $alpha) {
+						$codondata->{$site}->{"h+"} = $p;
+						printf RESULT ("%d\t+\t%0.4f\n", $codon, $p);
+						$countp++;
+					}
+					elsif ($beta < $alpha) {
+						$codondata->{$site}->{"h-"} = $p;
+						printf RESULT ("%d\t-\t%0.4f\n", $codon, $p);
+						$countn++;
+					}
+					else {
+						message("W", "FEL codon $codon is significant but beta == alpha; skipped");
+					}
+				}
+			}
+		}
+
+		printf RESULT "\nPositive_selection: $countp\n";
+		printf RESULT "Negative_selection: $countn\n";
+	};
+	if ($@) {
+		message("E", $@);
 	}
-
-	printf RESULT "\n==> Positive_selection: $countp\n";
-	printf RESULT "==> Negative_selection: $countn\n";
 }
 
 #
@@ -1375,12 +1581,12 @@ sub generateSequence {
 
 	print RESULT <<EOS;
 
-+--------------------------------------------------------------------------------------+
-|  Sequence overview of site specific results                                          |
-+--------------------------------------------------------------------------------------+
-|  Codon   Codon  Amino  T1_Bayes_1_2  T1_Bayes_7_8  T2_Bayes  Hyphy     Hyphy         |
-|  number         acid                                         negative  positive      |
-+--------------------------------------------------------------------------------------+
+# -------------------------------------------------------------------------------------+
+# Sequence overview of site specific results                                           |
+# -------------------------------------------------------------------------------------+
+# Codon   Codon  Amino  T1_Bayes_1_2  T1_Bayes_7_8  T2_Bayes  Hyphy     Hyphy          |
+# number         acid                                         negative  positive       |
+# -------------------------------------------------------------------------------------+
 
 EOS
 
@@ -1388,14 +1594,14 @@ EOS
 	my ($b12_, $b78_, $b_, $hn_, $hp_);
 
 	my $count = length($seq) / 3;
-	my $icode = $params{icode};
+	my $icode = $PARAMS{icode};
 
 	# Loop over codons
 	for (my $i = 0 ; $i < $count ; $i++) {
 		my $codon = substr($seq, $i * 3, 3);
 		my ($cu, $cl) = (uc($codon), lc($codon));
 		my $u  = uc($codon);
-		my $aa = $aacode2{$icode}{$u} ? $aacode2{$icode}{$u} : $aacode{$u};
+		my $aa = $AACODE2{$icode}{$u} ? $AACODE2{$icode}{$u} : $AACODE{$u};
 		my ($aau, $aal) = ($aa, lc($aa));
 		my $cd    = $codondata->{$i};
 		my $trees = substr($cd->{"2"}, 1);
@@ -1409,7 +1615,7 @@ EOS
 			"%d\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n",
 			$i + 1,
 			$codon,
-			$aacode2{$icode}{$codon} ? $aacode2{$icode}{$codon}         : $aacode{$codon},
+			$AACODE2{$icode}{$codon} ? $AACODE2{$icode}{$codon}         : $AACODE{$codon},
 			$x_b12                   ? sprintf("%0.4f", $bayes12->{$i}) : ".",
 			$x_b78                   ? sprintf("%0.4f", $bayes78->{$i}) : ".",
 			$trees                   ? $trees                           : ".",
@@ -1481,35 +1687,6 @@ sub isOmega {
 
 	return 0;
 }
-
-# ------------------------------------------------------------------------------
-# Constants for svg
-# ------------------------------------------------------------------------------
-
-my $FONT     = qq(font-family="monospace" font-size="12" font-weight="normal");
-my $LINETYPE = qq(fill-opacity:1.0; stroke-linecap:square; stroke-opacity:1.0; stroke-width:1);
-my $RECTTYPE = qq(fill-opacity:1.0; stroke-opacity:1.0; stroke-width:1);
-
-# The x offset of "layers" in the tree graph
-my $XDELTA = 40;
-
-# Graph settings
-my $LEFTOFFSET    = 30;
-my $TOPPADDING    = 100;
-my $LEFTPADDING   = 10;
-my $RIGHTPADDING  = 40;
-my $BOTTOMPADDING = 10;
-my $CELLWIDTH     = 52;
-my $HEIGHT        = 200;
-
-my %COLORS = (
-	white   => "rgb(255,255,255)",
-	black   => "rgb(32,32,32)",
-	gray    => "rgb(128,128,128)",
-	icolor  => "rgb(64,64,64)",
-	scolor  => "rgb(32,32,192)",
-	hscolor => "rgb(192,32,32)"
-);
 
 #
 # ------------------------------------------------------------------------------
@@ -1664,12 +1841,17 @@ sub svgFillLines {
 	for my $n (@{$node->{subnodes}}) {
 		svgFillLines($n, $elems, $maxdepth);
 		push(@$elems, svgLine($n->{x}, $n->{y1}, $n->{x}, $n->{y2}, $COLORS{black}));
-		if ($n->{name}) {
-			my $x2 = $node->{x} + ($maxdepth - $n->{depth} + 1) * $XDELTA;
-			push(@$elems, svgLine($node->{x}, $n->{y}, $x2, $n->{y}, $COLORS{black}));
+		if ($n->{color}) {
+			if ($n->{name}) {
+				my $x2 = ($maxdepth - $n->{depth} + 1) * $XDELTA;
+				push(@$elems, svgRectangle($node->{x}, $n->{y} - 1, $x2, 3, $n->{color}));
+			}
+			else {
+				push(@$elems, svgRectangle($node->{x}, $n->{y} - 1, $XDELTA, 3, $n->{color}));
+			}
 		}
 		else {
-			my $x2 = $node->{x} + $XDELTA;
+			my $x2 = $n->{name} ? $node->{x} + ($maxdepth - $n->{depth} + 1) * $XDELTA : $node->{x} + $XDELTA;
 			push(@$elems, svgLine($node->{x}, $n->{y}, $x2, $n->{y}, $COLORS{black}));
 		}
 	}
@@ -1681,7 +1863,7 @@ sub svgFillLines {
 # ------------------------------------------------------------------------------
 #
 sub svgFillTree {
-	my ($otree, $elems, $maxdepth, $y) = @_;
+	my ($otree, $elems, $maxdepth, $y, $m) = @_;
 
 	my $depth   = 0;
 	my $yoffset = 16;
@@ -1698,14 +1880,20 @@ sub svgFillTree {
 		}
 		elsif ($x =~ m/^\)\s*(#\d+)?/) {
 			my $marked = $1;
-			$node->{marked} = $marked         if ($marked);
-			$node           = $node->{parent} if ($node->{parent});
+			if ($marked) {
+				$node->{marked} = $marked;
+				$node->{color}  = $m->{$marked} if ($m->{$marked});
+			}
+			$node = $node->{parent} if ($node->{parent});
 			$depth--;
 		}
-		elsif ($x =~ m/([a-z][^,:\(\) ]*)(\s+#\d+)?/i) {
+		elsif ($x =~ m/([a-z][^,:\(\) ]*)\s*(#\d+)?/i) {
 			my ($name, $marked) = ($1, $2);
 			my $subnode = {name => $name, x => $LEFTPADDING + $depth * $XDELTA, y => $y, depth => $depth};
-			$subnode->{marked} = $marked if ($marked);
+			if ($marked) {
+				$subnode->{marked} = $marked;
+				$subnode->{color}  = $m->{$marked} if ($m->{$marked});
+			}
 			push(@{$node->{subnodes}}, $subnode);
 			$y += $yoffset;
 		}
@@ -1726,117 +1914,165 @@ sub svgFillTree {
 sub generateOmegaGraph {
 	my ($file, $data, $title, $s, $hs, $otree, $test) = @_;
 
-	my $y;
+	# Calculate significance color
+	my $getSColor = sub {
+		my ($value, $s, $hs) = @_;
+		if ($value < $hs) {
+			return $COLORS{hscolor};
+		}
+		if ($value < $s) {
+			return $COLORS{scolor};
+		}
+		return $COLORS{black};
+	};
+
 	my @elems;
-	my @bayes;
 
-	# The maximum omega value
-	my $max = 2.0;
+	my $color    = $COLORS{black};
+	my $omegamax = 2.0;
+	map {$TOPPADDING = 200 if ($_->[2] >= $omegamax)} @$data;
 
-	for my $d (@$data) {
-		$TOPPADDING = 200 if ($d->[3] >= $max);
-	}
-
-	my $unit = $HEIGHT / $max;
+	my $unit      = $HEIGHT / $omegamax;
+	my $cellwidth = $test == 2 ? (4 * 14) : (6 * 14);
 
 	# Width of the graph - not of the whole image
-	my $width = $LEFTOFFSET + (@$data * $CELLWIDTH);
+	my $width = $LEFTOFFSET + (@$data * ($cellwidth + 8));
 	$width = 650 if ($width < 650);
 
-	push(@elems, svgText($LEFTPADDING + $LEFTOFFSET, 15, $title, $COLORS{black}));
-	push(@elems, svgLine($LEFTPADDING, $TOPPADDING,           $LEFTPADDING, $TOPPADDING + $HEIGHT, $COLORS{black}));
-	push(@elems, svgLine($LEFTPADDING, $TOPPADDING + $HEIGHT, $width,       $TOPPADDING + $HEIGHT, $COLORS{black}));
-	push(@elems, svgTextUp($LEFTPADDING - 7, $TOPPADDING - 5, "Omega", $COLORS{black}));
-	push(@elems, svgText($LEFTPADDING + $width - 4, $TOPPADDING + $HEIGHT + 4, "Time", $COLORS{black}));
+	push(@elems, svgText($LEFTPADDING, 15, $title, $color));
+	push(@elems, svgLine($LEFTPADDING, $TOPPADDING,           $LEFTPADDING, $TOPPADDING + $HEIGHT, $color));
+	push(@elems, svgLine($LEFTPADDING, $TOPPADDING + $HEIGHT, $width,       $TOPPADDING + $HEIGHT, $color));
+	push(@elems, svgTextUp($LEFTPADDING - 7, $TOPPADDING - 5, "Omega", $color));
+	push(@elems, svgText($LEFTPADDING + $width - 4, $TOPPADDING + $HEIGHT + 4, "Time", $color));
 
 	# Draw omega coordinates
-	my $n = "1" . "0" x (length(sprintf("%d", $max)) - 1);
-	for (my $o = 0 ; $o < $max ; $o += $n) {
+	my $n = "1" . "0" x (length(sprintf("%d", $omegamax)) - 1);
+	for (my $o = 0 ; $o < $omegamax ; $o += $n) {
 		my $y = svgY($o, $HEIGHT, $unit, $TOPPADDING);
-		push(@elems, svgText($LEFTPADDING + 5, $y - 5, sprintf("%d", $o), $COLORS{black}));
+		push(@elems, svgText($LEFTPADDING + 5, $y - 5, sprintf("%d", $o), $color));
 		push(@elems, svgLine($LEFTPADDING, $y, $width, $y, $COLORS{gray}));
 	}
 
-	# Draw values
-	my $x = $LEFTOFFSET;
-	for my $d (reverse @$data) {
-		my $color;
-		if ($d->[4] == 1 || $d->[3] == 999) {
-			$color = $COLORS{gray};
-		}
-		elsif ($d->[4] >= $s) {
-			$color = $COLORS{icolor};
-		}
-		else {
-			$color = ($d->[4] <= $hs ? $COLORS{hscolor} : $COLORS{scolor});
-		}
+	# The bayes values which are too long
+	my @bigbayes;
 
-		my $y = svgY($d->[3] < $max ? $d->[3] : $max, $HEIGHT, $unit, $TOPPADDING);
-		push(@elems, svgTextUp($x - 2,      $y - 5,  "[#]",   $color));
-		push(@elems, svgTextUp($x - 2,      $y - 30, $d->[0], $color));
-		push(@elems, svgTextUp($x - 2 + 12, $y - 5,  "[w]",   $color));
-		push(@elems, svgTextUp($x - 2 + 12, $y - 30, $d->[3], $color));
-		push(@elems, svgTextUp($x - 2 + 24, $y - 5,  "[p]",   $color));
-		push(@elems, svgTextUp($x - 2 + 24, $y - 30, $d->[4], $color));
+	# The branches with higher significance (to colorize the tree parts)
+	my %marked = ();
+
+	# Draw values
+	my $x = $LEFTOFFSET - 2;
+	for my $d (reverse @$data) {
+
+		# Significant color
+		my $colors;
+		my $y = svgY($d->[2] < $omegamax ? $d->[2] : $omegamax, $HEIGHT, $unit, $TOPPADDING);
+
 		if ($test == 2) {
-			push(@elems, svgTextUp($x - 2 + 36, $y - 5, "[s]", $color));
-			my @bs  = ();
-			my @bs2 = ();
+			$colors = $getSColor->($d->[4], $s, $hs);
+
+			my @b = ();
 			if (@{$d->[5]} <= 3) {
-				map {$_->[2] =~ s/[^\*]*//g; push(@bs, join("", @$_))} @{$d->[5]};
+				map {$_->[2] =~ s/[^\*]*//g; push(@b, join("", @$_))} @{$d->[5]};
 			}
 			else {
-				map {$_->[2] =~ s/[^\*]*//g; push(@bs, join("", @$_))} @{$d->[5]}[0 .. 2];
-				push(@bs, "...");
+				map {$_->[2] =~ s/[^\*]*//g; push(@b, join("", @$_))} @{$d->[5]}[0 .. 2];
+				push(@b, "...");
+				my @bs2 = ();
 				map {$_->[2] =~ s/[^\*]*//g; push(@bs2, join("", @$_))} @{$d->[5]};
-				push(@bayes, sprintf("[#] %d [s] %s", $d->[0], join("/", @bs2)));
+				push(@bigbayes, sprintf("[#] %d [s] %s", $d->[0], join("/", @bs2)));
 			}
-			push(@elems, svgTextUp($x - 2 + 36, $y - 30, @bs ? join("/", @bs) : "-", $color));
+
+			push(@elems, svgTextUp($x,      $y - 5,  "[#]",                    $colors));
+			push(@elems, svgTextUp($x,      $y - 40, $d->[0],                  $colors));
+			push(@elems, svgTextUp($x + 14, $y - 5,  "[w]",                    $color));
+			push(@elems, svgTextUp($x + 14, $y - 40, $d->[2],                  $color));
+			push(@elems, svgTextUp($x + 28, $y - 5,  "[p]",                    $color));
+			push(@elems, svgTextUp($x + 28, $y - 40, $d->[4],                  $colors));
+			push(@elems, svgTextUp($x + 42, $y - 5,  "[s]",                    $color));
+			push(@elems, svgTextUp($x + 42, $y - 40, @b ? join("/", @b) : "-", $color));
+
+			$marked{"#" . $d->[0]} = $colors if ($colors ne $color);
 		}
 		elsif ($test == 3) {
-			my $fb;
-			$fb = "F&gt;B" if ($d->[3] > $d->[2]);
-			$fb = "F=B"    if ($d->[3] == $d->[2]);
-			$fb = "F&lt;B" if ($d->[3] < $d->[2]);
-			push(@elems, svgTextUp($x - 2 + 36, $y - 5,  "[d]", $color));
-			push(@elems, svgTextUp($x - 2 + 36, $y - 30, $fb,   $color));
+			$colors = $getSColor->($d->[4] < $d->[5] ? $d->[4] : $d->[5], $s, $hs);
+			my $colorpn  = $getSColor->($d->[4], $s, $hs);
+			my $colorpfb = $getSColor->($d->[5], $s, $hs);
+
+			my $fb = $d->[2] < $d->[3] ? "F&lt;B" : ($d->[2] > $d->[3] ? "F&gt;B" : "F=B");
+
+			push(@elems, svgTextUp($x,      $y - 5,  "[#]",    $colors));
+			push(@elems, svgTextUp($x,      $y - 60, $d->[0],  $colors));
+			push(@elems, svgTextUp($x + 14, $y - 5,  "[w_f]",  $color));
+			push(@elems, svgTextUp($x + 14, $y - 60, $d->[2],  $color));
+			push(@elems, svgTextUp($x + 28, $y - 5,  "[w_b]",  $color));
+			push(@elems, svgTextUp($x + 28, $y - 60, $d->[3],  $color));
+			push(@elems, svgTextUp($x + 42, $y - 5,  "[p_n]",  $color));
+			push(@elems, svgTextUp($x + 42, $y - 60, $d->[4],  $colorpn));
+			push(@elems, svgTextUp($x + 56, $y - 5,  "[p_fb]", $color));
+			push(@elems, svgTextUp($x + 56, $y - 60, $d->[5],  $colorpfb));
+			push(@elems, svgTextUp($x + 70, $y - 5,  "[d]",    $color));
+			push(@elems, svgTextUp($x + 70, $y - 60, $fb,      $color));
+
+			$marked{"#" . $d->[0]} = $colors if ($colors ne $color);
 		}
-		push(@elems, svgRectangle($x, $y - 2, $CELLWIDTH - 4, 4, $color));
-		$x += $CELLWIDTH;
+		push(@elems, svgRectangle($x, $y - 2, $cellwidth, 4, $colors));
+		$x += $cellwidth + 8;
 	}
 
-	$y = $TOPPADDING + $HEIGHT + 20;
-	$s = sprintf("Significance: %f\n", $significance);
-	$s .= sprintf(" / High Significance (p-value limit / number of tests): %f\n\n", $hs);
-	push(@elems, svgText($LEFTPADDING, $y, $s, $COLORS{black}));
+	my $y = $TOPPADDING + $HEIGHT + 24;
+	my $t = sprintf("Significance: %f\n", $s);
+	$t .= sprintf(" / High Significance (p-value limit / number of tests): %f\n\n", $hs);
+	push(@elems, svgText($LEFTPADDING, $y, $t, $color));
 
-	$y += 4;
-	for my $b (@bayes) {
+	if (@bigbayes) {
 		$y += 16;
-		push(@elems, svgText($LEFTPADDING, $y, $b, $COLORS{black}));
+		for my $b (@bigbayes) {
+			$y += 16;
+			push(@elems, svgText($LEFTPADDING, $y, $b, $color));
+		}
 	}
 
-	$y += 4;
-	my @a = (
-		"Red: Significant with multiple testing correction",
-		"Blue: Significant with original p-value limit (0.05)",
-		"Black: Not significant",
-		"Grey: Not significant and nonsensical data points (w=999 or p=1)",
-		"#: Number of foreground branch starting with target species",
-		"w: Omega value of foreground branch",
-		"p: p-value of branch model comparison (foreground branch (F) against background branches (B))"
-	);
-	push(@a, "d: Direction of selection change (F&lt;B: towards neg. selection, F&gt;B: towards pos. selection)")
-	  if ($test == 3);
-	push(@a, "s: Relevant site values, separated by /")
-	  if ($test == 2);
-
+	$y += 16;
+	my @a;
+	if ($test == 2) {
+		@a = (
+			["COLORS",  ""],
+			["red",     "significant with multiple testing correction"],
+			["blue",    "significant with original p-value limit (0.05)"],
+			["black",   "not significant"],
+			["SYMBOLS", ""],
+			["#",       "number of foreground branch starting with target species"],
+			["w",       "weighted mean foreground omega across site classes"],
+			["p",       "p-value of the branch-site likelihood-ratio test"],
+			["",        "alternative model versus null model with foreground omega fixed to 1"],
+			["s",       "relevant site values, separated by /"]
+		);
+	}
+	elsif ($test == 3) {
+		@a = (
+			["COLORS",  ""],
+			["red",     "at least one test comparison significant after multiple-testing correction"],
+			["blue",    "at least one test comparison nominally significant"],
+			["black",   "neither comparison significant"],
+			["SYMBOLS", ""],
+			["#",       "number of foreground branch starting with target species"],
+			["w_f",     "omega value of foreground branch"],
+			["w_b",     "omega value of background branch"],
+			["p_n",     "p-value for foreground omega versus neutrality (omega_F = 1)"],
+			["p_fb",    "p-value for foreground versus background omega (omega_F = omega_B)"],
+			["d",       "direction of foreground/background omega difference"],
+			["",        "F&lt;B: foreground omega lower than background"],
+			["",        "F&gt;B: foreground omega higher than background"],
+			["",        "F=B: equal estimated omega"]
+		);
+	}
 	for my $s (@a) {
 		$y += 16;
-		push(@elems, svgText($LEFTPADDING, $y, $s, $COLORS{gray}));
+		push(@elems, svgText($LEFTPADDING,      $y, $s->[0], $color));
+		push(@elems, svgText($LEFTPADDING + 60, $y, $s->[1], $color));
 	}
 
-	my ($h, $w) = svgFillTree($otree, \@elems, 0, $y + 20);
+	my ($h, $w) = svgFillTree($otree, \@elems, 0, $y + 32, \%marked);
 	$width = $w if ($w > $width);
 
 	open(F, ">", $file) || die;
@@ -1859,6 +2095,7 @@ sub generateOmega {
 	# Get folders without fixomega
 	my @dirs0 = <$ctlname-${test}0-*>;
 	my @dirs1 = <$ctlname-${test}1-*>;
+	my @dirs2 = <$ctlname-${test}2-*>;
 
 	# Read omega tree
 	my $otree;
@@ -1886,6 +2123,15 @@ sub generateOmega {
 	my @mtrees;
 	my @values = ();
 
+	# Get theses values here to avaod analyzing in a loop several times
+	my ($np2, $lnl2);
+	my ($dn2, $ds2);
+	if ($test == 3) {
+		my @lines2 = readFile("$dirs2[0]/mlc");
+		($np2, $lnl2) = getNp(\@lines2);
+		($dn2, $ds2)  = getOmega($test, \@lines2);
+	}
+
 	for (my $treeno = 0 ; $treeno < @dirs0 ; $treeno++) {
 		my $mtree;
 		my @a = readFile("$dirs0[$treeno]/codeml.ctl");
@@ -1895,53 +2141,23 @@ sub generateOmega {
 				last;
 			}
 		}
-
 		my @lines0 = readFile("$dirs0[$treeno]/mlc");
 		my @lines1 = readFile("$dirs1[$treeno]/mlc");
 
-		my ($dn, $ds) = getOmega($test, \@lines0);
+		my ($dn,  $ds)   = getOmega($test, \@lines0);
+		my ($np0, $lnl0) = getNp(\@lines0);
+		my ($np1, $lnl1) = getNp(\@lines1);
+		my $p = (getStatistics($np0, $lnl0, $np1, $lnl1))[2];
 
-		my @b0;
-
-		# Get Bayes values
-		for (my $k = 0 ; $k < @lines0 ; $k++) {
-			if ($lines0[$k] =~ m/Bayes Empirical Bayes/) {
-				$k += 2;
-				while ($lines0[$k] =~ m/\d+\s+[A-Z\*]\s+/) {
-					my @a = split(/\s+/, $lines0[$k++]);
-					push(@b0, [$a[0], $a[1], $a[2]]) if ($a[2] =~ m/\*/);
-				}
-				last;
-			}
+		if ($test == 2) {
+			my @b0 = getBayes(\@lines0);
+			push(@values, [getFloat($ds), getFloat($dn), getFloat($p), \@b0]);
+		}
+		elsif ($test == 3) {
+			my $p2 = (getStatistics($np0, $lnl0, $np2, $lnl2))[2];
+			push(@values, [getFloat($ds), getFloat($dn), getFloat($p), getFloat($p2)]);
 		}
 
-		my ($np0, $lnl0);
-		my ($np1, $lnl1);
-
-		# Get np and lnl values
-		for my $line (@lines0) {
-			if ($line =~ m/lnL\(.*?np:\s*(\d+)\):\s*([\d\.\-]+)/) {
-				($np0, $lnl0) = ($1, $2);
-				last;
-			}
-		}
-		for my $line (@lines1) {
-			if ($line =~ m/lnL\(.*?np:\s*(\d+)\):\s*([\d\.\-]+)/) {
-				($np1, $lnl1) = ($1, $2);
-				last;
-			}
-		}
-
-		my $p;
-		if (($np0 != $np1) && ($lnl0 != $lnl1)) {
-			my $dltr = abs(2 * ($lnl1 - $lnl0));
-			$p = Statistics::Distributions::chisqrprob(abs($np1 - $np0), $dltr);
-		}
-		else {
-			$p = 1;
-		}
-
-		push(@values, [getFloat($dn), getFloat($ds), getFloat($p), \@b0]);
 		push(@mtrees, $mtree);
 	}
 
@@ -1962,7 +2178,7 @@ sub generateOmega {
 			# Check and get omega values
 			if (isOmega($mtree, $species)) {
 				my $v = $values[$i];
-				push(@data, [@data + 1, $mtree, $v->[0], $v->[1], $v->[2], $v->[3]]);
+				push(@data, [@data + 1, $mtree, @$v]);
 
 				# Change next " #1" in otree by values
 				my $s = " #" . @data;
@@ -1983,17 +2199,22 @@ sub generateOmega {
 			"# High Significance (corrected for multiple testing via p-value limit divided by number of tests): %f\n\n",
 			$hs
 		);
-		print F "# Number\tTree\tdN/dS_background\tdN/dS_foreground\tP-Value\n\n";
-
-		# Print without bayes values
-		for my $d (@data) {
-			print F join("\t", @$d[0 .. @$d - 2]), "\n";
+		if ($test == 2) {
+			print F "# Number\tTree\tdN/dS_foreground\tdN/dS_background\tP-Value\n\n";
+			for my $d (@data) {
+				print F join("\t", @$d[0 .. @$d - 2]), "\n";
+			}
+		}
+		elsif ($test == 3) {
+			print F "# Number\tTree\tdN/dS_foreground\tdN/dS_background\tP-Value n\tP-Value fb\n\n";
+			for my $d (@data) {
+				print F join("\t", @$d[0 .. @$d - 1]), "\n";
+			}
 		}
 		close(F);
 
 		writeFile("$omegafile.tree", $ot);
-
-		my $title = "Forground Omega Graph - " . ($test == 2 ? "branch-site specific" : "branch specific");
+		my $title = "Foreground Omega Graph - " . ($test == 2 ? "branch-site specific" : "branch specific");
 		generateOmegaGraph("$omegafile.svg", \@data, $title, $significance, $hs, $ot, $test);
 	}
 
@@ -2047,14 +2268,14 @@ sub generate {
 			sprintf("Results for %s.ctl with tests %s and significance %f", $ctlname, $tests, $significance)
 		);
 		print RESULT <<EOS;
-+--------------------------------------------------------------------------------------+
+# -------------------------------------------------------------------------------------+
 $s
-+--------------------------------------------------------------------------------------+
+# -------------------------------------------------------------------------------------+
 
 EOS
 
 		my ($bayes12, $bayes78, $codondata) = generateCodeml($ctlname);
-		generateHyphy($ctlname, $codondata);
+		generateHyphy($ctlname, $codondata) if ($tests =~ /h/);
 		generateSequence($ctlname, $bayes12, $bayes78, $codondata);
 
 		close(RESULT);
@@ -2101,9 +2322,10 @@ sub mark {
 # ------------------------------------------------------------------------------
 #
 sub extendCtl {
-	my ($ctl, $model, $nssites, $fixomega) = @_;
-	my @a = grep {!($_ =~ m/(\s+|)(model|NSsites|fix_omega)\s*=/)} split(/\n/, $ctl);
-	return "model = $model\nNSsites = $nssites\nfix_omega = $fixomega\n" . join("\n", @a);
+	my ($ctl, $values) = @_;
+	my $keys = join("|", keys %$values);
+	my @a    = grep {!($_ =~ m/(\s+|)($keys)\s*=/)} split(/\n/, $ctl);
+	return join("\n", map {$_ .= " = $values->{$_}"} keys %$values) . "\n" . join("\n", @a);
 }
 
 #
@@ -2168,7 +2390,7 @@ sub runHyphy {
 	symlink($alignfile, $af);
 	symlink($treefile,  $tf);
 
-	my $code = $icodemap{$params{icode}};
+	my $code = $ICODEMAP{$PARAMS{icode}};
 	if (!$code) {
 		message("E", "Codon usage table is not implemented in codeml and/or HyPhy FEL");
 		return;
@@ -2196,9 +2418,11 @@ sub getRuns {
 	for (my $i = 0 ; $t = mark($t) ; $i++) {
 		$n++;
 	}
+
+	# Count for test 3 plus 1, because if new added xxx-32-00000 run!
 	$count++ if ($tests =~ m/1/);
-	$count += 2 * $n if ($tests =~ m/2/);
-	$count += 2 * $n if ($tests =~ m/3/);
+	$count += 2 * $n     if ($tests =~ m/2/);
+	$count += 2 * $n + 1 if ($tests =~ m/3/);
 	$count++ if ($tests =~ m/h/);
 
 	return $count;
@@ -2228,7 +2452,7 @@ sub prepare {
 		$value =~ s/\s+$//;
 
 		next if ($key =~ m/model|NSsites|fix_omega|omega/);
-		next if ($params{$key});
+		next if ($PARAMS{$key});
 
 		if ($key eq "seqfile") {
 			$seqfile = $value;
@@ -2243,8 +2467,8 @@ sub prepare {
 	}
 	close(F);
 
-	for my $key (sort keys %params) {
-		$ctl .= "$key = $params{$key}\n";
+	for my $key (sort keys %PARAMS) {
+		$ctl .= "$key = $PARAMS{$key}\n";
 	}
 
 	if (!$seqfile || !-f $seqfile) {
@@ -2304,20 +2528,20 @@ sub loop {
 
 		# Site specific
 		if ($tests =~ m/1/) {
-			my $c = extendCtl($ctl, "0", "1 2 7 8", "0");
+			my $c = extendCtl($ctl, {"model" => "0", "NSsites" => "1 2 7 8", "fix_omega" => "0"});
 			my $t = $tree;
 			runCodeml($ctlname, $seqfile, $treefile, $c, $t, "10", 0);
 		}
 
 		# Branch site model with and without selection
 		if ($tests =~ m/2/) {
-			my $c = extendCtl($ctl, "2", "2", "0");
+			my $c = extendCtl($ctl, {"model" => "2", "NSsites" => "2", "fix_omega" => "0"});
 			my $t = $tree;
 			for (my $treeno = 0 ; $t = mark($t) ; $treeno++) {
 				runCodeml($ctlname, $seqfile, $treefile, $c, $t, "20", $treeno);
 			}
 
-			$c = extendCtl($ctl, "2", "2", "1");
+			$c = extendCtl($ctl, {"model" => "2", "NSsites" => "2", "fix_omega" => "1", "omega" => "1"});
 			$t = $tree;
 			for (my $treeno = 0 ; $t = mark($t) ; $treeno++) {
 				runCodeml($ctlname, $seqfile, $treefile, $c, $t, "21", $treeno);
@@ -2326,17 +2550,20 @@ sub loop {
 
 		# Branch model with and without selection
 		if ($tests =~ m/3/) {
-			my $c = extendCtl($ctl, "2", "0", "0");
+			my $c = extendCtl($ctl, {"model" => "2", "NSsites" => "0", "fix_omega" => "0"});
 			my $t = $tree;
 			for (my $treeno = 0 ; $t = mark($t) ; $treeno++) {
 				runCodeml($ctlname, $seqfile, $treefile, $c, $t, "30", $treeno);
 			}
 
-			$c = extendCtl($ctl, "2", "0", "1");
+			$c = extendCtl($ctl, {"model" => "2", "NSsites" => "0", "fix_omega" => "1", "omega" => "1"});
 			$t = $tree;
 			for (my $treeno = 0 ; $t = mark($t) ; $treeno++) {
 				runCodeml($ctlname, $seqfile, $treefile, $c, $t, "31", $treeno);
 			}
+
+			$c = extendCtl($ctl, {"model" => "0", "NSsites" => "0", "fix_omega" => "0", "omega" => "1"});
+			runCodeml($ctlname, $seqfile, $treefile, $c, $tree, "32", "0");
 		}
 
 		# Calculate hyphy results
