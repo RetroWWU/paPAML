@@ -1,3 +1,7 @@
+**2026-10-19 - v3.0**
+
+Instead of using the text file called "out" for calculation, now the json geneerated file is used
+
 **2026-05-15 - v2.16**
 
 Remove bayes values in omega graphs - meaning to remove the misleading info and programming error "ARRAY(...)" from the files *.B und *.BS in *result.omega
