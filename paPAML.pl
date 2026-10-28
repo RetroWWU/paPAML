@@ -2,6 +2,7 @@
 
 #
 # ==============================================================================
+# [2026-10-28] v3.0a: Add gene name in spot graphs
 # [2026-09-08] v3.0: correct errors and add one new codeml run for xxx-32-00000
 # [2026-05-15] v2.16: remove error in bayes values in omega graphs
 # [2026-04-17] v2.15a: links to codeml and hyphy now *-pid, logging param -l
@@ -52,7 +53,7 @@ use Statistics::Distributions;
 
 $| = 1;
 
-my $VERSION     = "3.0";
+my $VERSION     = "3.0a";
 my $RUNTIMEFILE = "runtime";
 
 # ------------------------------------------------------------------------------
@@ -2215,6 +2216,7 @@ sub generateOmega {
 
 		writeFile("$omegafile.tree", $ot);
 		my $title = "Foreground Omega Graph - " . ($test == 2 ? "branch-site specific" : "branch specific");
+		$title .= " - Gene: $ctlname";
 		generateOmegaGraph("$omegafile.svg", \@data, $title, $significance, $hs, $ot, $test);
 	}
 
