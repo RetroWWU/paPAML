@@ -1,3 +1,7 @@
+**2026-10-28 - v3.0a**
+
+add gene name to spot graphs
+
 **2026-10-19 - v3.0**
 
 Instead of using the hyphy text file called "out" for calculation, now the json geneerated file is used
